@@ -24,7 +24,7 @@ func main() {
 	env, err := lmdb.NewEnv()
 
 	if err != nil {
-		panic(err)
+		log.Fatalf("Failed to create env: %s", err)
 	}
 	defer env.Close()
 
@@ -100,12 +100,12 @@ func setProduct(txn *lmdb.Txn, dbi lmdb.DBI, id uint64) (err error) {
 	// Make a brand new empty message.  A Message allocates Cap'n Proto structs.
 	msg, seg, err := capnp.NewMessage(capnp.SingleSegment(nil))
 	if err != nil {
-		panic(err)
+		return err
 	}
 
 	prod, err := NewRootProduct(seg)
 	if err != nil {
-		return
+		return err
 	}
 
 	classification, err := NewClassification(seg)
@@ -133,10 +133,10 @@ func setProduct(txn *lmdb.Txn, dbi lmdb.DBI, id uint64) (err error) {
 	enc := capnp.NewPackedEncoder(buffer)
 	err = enc.Encode(msg)
 	if err != nil {
-		panic(err)
+		return err
 	}
 	if err = buffer.Flush(); err != nil {
-		return
+		return err
 	}
 
 	// key
@@ -148,7 +148,7 @@ func setProduct(txn *lmdb.Txn, dbi lmdb.DBI, id uint64) (err error) {
 	prodValueKey := prodTable.Pack(tuple.Tuple{id})
 
 	if err = txn.Put(dbi, codeIndexKey, buf, 0); err != nil {
-		return
+		return err
 	}
 
 	if err = txn.Put(dbi, skuIndexKey, buf, 0); err != nil {
@@ -162,8 +162,10 @@ func setCounter(txn *lmdb.Txn, dbi lmdb.DBI, counter uint64) (err error) {
 	var buf []byte
 	buf, err = txn.PutReserve(dbi, checkKey, 8, 0)
 
-	if err == nil {
-		order.PutUint64(buf, counter)
+	if err != nil {
+		return err
 	}
-	return err
+
+	order.PutUint64(buf, counter)
+	return nil
 }
