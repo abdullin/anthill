@@ -10,6 +10,7 @@ import (
 	"os"
 	"runtime"
 	"strconv"
+	"text/tabwriter"
 	"time"
 
 	capnp "zombiezen.com/go/capnproto2"
@@ -28,6 +29,10 @@ type Options struct {
 }
 
 func main() {
+
+	if err := os.RemoveAll("db"); err != nil {
+		log.Fatalf("Failed to cleanup db folder: %s", err)
+	}
 
 	opt := &Options{}
 	flag.BoolVar(&opt.NoSync, "ns", false, "Enables no flush mode (makes LMDB ACI instead of ACID)")
@@ -78,8 +83,13 @@ func main() {
 
 	var counter uint64
 
-	ticker := time.NewTicker(5 * time.Second)
+	ticker := time.NewTicker(1 * time.Second)
 	go func() {
+
+		const padding = 1
+		w := tabwriter.NewWriter(os.Stdout, 10, 0, padding, ' ', tabwriter.AlignRight)
+		fmt.Fprintln(w, "tx/s", "\t", "total", "\t", "Size MB", "\t")
+		w.Flush()
 
 		for {
 			start := counter
@@ -93,7 +103,9 @@ func main() {
 				// get the size
 				size := fi.Size() / 1024 / 1024
 
-				fmt.Println((counter-start)/5, " tx/s ", counter, " total ", size, " MB ")
+				fmt.Fprintln(w, (counter-start)/1, "\t", counter, "\t", size, "\t")
+
+				w.Flush()
 				// do stuff
 			}
 		}
