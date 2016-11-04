@@ -34,6 +34,8 @@ type Options struct {
 	DeleteDb bool
 }
 
+var counter uint64
+
 func main() {
 
 	opt := &Options{}
@@ -67,7 +69,7 @@ func main() {
 	}
 
 	var dbSize int64 = 1 << 30
-	fmt.Println("Setting DB size to ", dbSize/1024/1024, "MB")
+	fmt.Println("Setting map size to", dbSize/1024/1024, "MB")
 
 	err = env.SetMapSize(dbSize)
 	if err != nil {
@@ -79,11 +81,11 @@ func main() {
 
 	if opt.NoSync {
 		envFlags |= lmdb.NoSync
-		fmt.Println("env: NoSync")
+		fmt.Println("  env: NoSync (let OS flush pages to disk whenever it wants)")
 	}
 	if opt.WriteMap {
 		txFlags |= lmdb.WriteMap
-		fmt.Println("tx: WriteMap")
+		fmt.Println("   tx: WriteMap (use writeable map pages)")
 	}
 
 	if err := env.SetFlags(envFlags); err != nil {
@@ -98,8 +100,6 @@ func main() {
 
 	// open a database that can be used as long as the enviroment is mapped.
 	var dbi lmdb.DBI
-	//env.SetFlags(lmdb.NoSync)
-
 	err = env.Update(func(txn *lmdb.Txn) (err error) {
 		dbi, err = txn.CreateDBI("agg")
 		return err
@@ -108,14 +108,13 @@ func main() {
 		log.Fatalf("failed to open database")
 	}
 
-	var counter uint64
-
-	ticker := time.NewTicker(1 * time.Second)
 	go func() {
+
+		ticker := time.NewTicker(1 * time.Second)
 
 		const padding = 1
 		w := tabwriter.NewWriter(os.Stdout, 10, 0, padding, ' ', tabwriter.AlignRight|tabwriter.TabIndent)
-		fmt.Fprintln(w, "tx/s", "\t", "total", "\t", "Size MB", "\t")
+		fmt.Fprintln(w, "tx/s", "\t", "products total", "\t", "Size MB", "\t")
 		w.Flush()
 
 		for {
@@ -143,7 +142,7 @@ func main() {
 	defer runtime.UnlockOSThread()
 
 	for {
-		err = env.UpdateLocked(func(txn *lmdb.Txn) (err error) {
+		err := env.RunTxn(txFlags, func(txn *lmdb.Txn) (err error) {
 			setProduct(txn, dbi, counter)
 			setCounter(txn, dbi, counter)
 
