@@ -4,22 +4,34 @@ import (
 	"bufio"
 	"bytes"
 	"encoding/binary"
+	"flag"
 	"fmt"
 	"log"
 	"os"
+	"runtime"
 	"strconv"
 	"time"
 
 	capnp "zombiezen.com/go/capnproto2"
 
-	_ "github.com/abdullin/events"
-	"github.com/abdullin/fdb-go/fdb/subspace"
-	"github.com/abdullin/fdb-go/fdb/tuple"
+	"github.com/abdullin/lex-go/subspace"
+	"github.com/abdullin/lex-go/tuple"
 
 	"github.com/bmatsuo/lmdb-go/lmdb"
 )
 
+// Options all cli params for this command
+type Options struct {
+
+	// Disables fsync
+	NoSync bool
+}
+
 func main() {
+
+	opt := &Options{}
+	flag.BoolVar(&opt.NoSync, "ns", false, "Enables no flush mode (makes LMDB ACI instead of ACID)")
+	flag.Parse()
 
 	env, err := lmdb.NewEnv()
 
@@ -30,6 +42,7 @@ func main() {
 
 	// configure and open the environment.  most configuration must be done
 	// before opening the environment.
+
 	err = env.SetMaxDBs(1)
 	if err != nil {
 		log.Fatalf("Failed to configure env: %s", err)
@@ -47,6 +60,14 @@ func main() {
 
 	// open a database that can be used as long as the enviroment is mapped.
 	var dbi lmdb.DBI
+	//env.SetFlags(lmdb.NoSync)
+
+	if opt.NoSync {
+		log.Println("Disabling sync")
+		if err := env.SetFlags(lmdb.NoSync); err != nil {
+			log.Fatalf("Failed to set flags %s", err)
+		}
+	}
 	err = env.Update(func(txn *lmdb.Txn) (err error) {
 		dbi, err = txn.CreateDBI("agg")
 		return err
@@ -57,28 +78,40 @@ func main() {
 
 	var counter uint64
 
-	ticker := time.NewTicker(1 * time.Second)
+	ticker := time.NewTicker(5 * time.Second)
 	go func() {
 
 		for {
 			start := counter
 			select {
 			case <-ticker.C:
-				fmt.Println("1 sec ", counter-start, " total ", counter)
+
+				fi, e := os.Stat("db/data.mdb")
+				if e != nil {
+					panic(e)
+				}
+				// get the size
+				size := fi.Size() / 1024 / 1024
+
+				fmt.Println((counter-start)/5, " tx/s ", counter, " total ", size, " MB ")
 				// do stuff
 			}
 		}
 	}()
 
-	for {
+	// pin this routine to a single thread. This allows us to use
+	// locked version of LMDB txn update
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
 
-		err = env.Update(func(txn *lmdb.Txn) (err error) {
+	for {
+		err = env.RunTxn(lmdb.WriteMap, func(txn *lmdb.Txn) (err error) {
 			setProduct(txn, dbi, counter)
 			setCounter(txn, dbi, counter)
 
-			//dbi, err = txn.CreateDBI("agg")
 			return err
 		})
+
 		if err != nil {
 			log.Fatalf("failed to open database")
 		}
