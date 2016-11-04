@@ -27,6 +27,9 @@ type Options struct {
 	// Disables fsync
 	NoSync bool
 
+	//
+	WriteMap bool
+
 	// Wipes the database
 	DeleteDb bool
 }
@@ -37,6 +40,7 @@ func main() {
 	flag.BoolVar(&opt.NoSync, "ns", false, "Enables no flush mode (makes LMDB ACI instead of ACID)")
 
 	flag.BoolVar(&opt.DeleteDb, "dd", false, "Deletes the database file")
+	flag.BoolVar(&opt.WriteMap, "wm", false, "Use writeable memory")
 
 	flag.Parse()
 
@@ -61,9 +65,29 @@ func main() {
 	if err != nil {
 		log.Fatalf("Failed to configure env: %s", err)
 	}
-	err = env.SetMapSize(1 << 30)
+
+	var dbSize int64 = 1 << 30
+	fmt.Println("Setting DB size to ", dbSize/1024/1024, "MB")
+
+	err = env.SetMapSize(dbSize)
 	if err != nil {
 		log.Fatalf("Failed to set map size to %d", 1<<30)
+	}
+
+	var envFlags uint
+	var txFlags uint
+
+	if opt.NoSync {
+		envFlags |= lmdb.NoSync
+		fmt.Println("env: NoSync")
+	}
+	if opt.WriteMap {
+		txFlags |= lmdb.WriteMap
+		fmt.Println("tx: WriteMap")
+	}
+
+	if err := env.SetFlags(envFlags); err != nil {
+		log.Fatalf("Failed to set flags %s", err)
 	}
 
 	os.MkdirAll("db", os.ModePerm)
@@ -76,12 +100,6 @@ func main() {
 	var dbi lmdb.DBI
 	//env.SetFlags(lmdb.NoSync)
 
-	if opt.NoSync {
-		log.Println("Disabling sync")
-		if err := env.SetFlags(lmdb.NoSync); err != nil {
-			log.Fatalf("Failed to set flags %s", err)
-		}
-	}
 	err = env.Update(func(txn *lmdb.Txn) (err error) {
 		dbi, err = txn.CreateDBI("agg")
 		return err
@@ -125,7 +143,7 @@ func main() {
 	defer runtime.UnlockOSThread()
 
 	for {
-		err = env.RunTxn(lmdb.WriteMap, func(txn *lmdb.Txn) (err error) {
+		err = env.UpdateLocked(func(txn *lmdb.Txn) (err error) {
 			setProduct(txn, dbi, counter)
 			setCounter(txn, dbi, counter)
 
@@ -136,7 +154,6 @@ func main() {
 			log.Fatalf("failed to open database")
 		}
 		counter++
-
 	}
 
 }
@@ -148,6 +165,10 @@ var order = binary.LittleEndian
 var codeIndex = subspace.Sub("code")
 var skuIndex = subspace.Sub("sku")
 var prodTable = subspace.Sub("prod")
+
+var buffer bytes.Buffer
+var writer = bufio.NewWriter(&buffer)
+var encoder = capnp.NewPackedEncoder(writer)
 
 func setProduct(txn *lmdb.Txn, dbi lmdb.DBI, id uint64) (err error) {
 	// Make a brand new empty message.  A Message allocates Cap'n Proto structs.
@@ -180,35 +201,32 @@ func setProduct(txn *lmdb.Txn, dbi lmdb.DBI, id uint64) (err error) {
 	prod.SetId(id)
 	prod.SetClassification(classification)
 
-	var b bytes.Buffer
-	buffer := bufio.NewWriter(&b)
+	buffer.Reset()
 
-	enc := capnp.NewPackedEncoder(buffer)
-	err = enc.Encode(msg)
+	err = encoder.Encode(msg)
 	if err != nil {
 		return err
 	}
-	if err = buffer.Flush(); err != nil {
+	if err = writer.Flush(); err != nil {
 		return err
 	}
 
-	// key
-	buf := make([]byte, 8, 8)
-	order.PutUint64(buf, uint64(id))
+	var keyBuffer = make([]byte, 8, 8)
+	order.PutUint64(keyBuffer, uint64(id))
 
 	codeIndexKey := codeIndex.Pack(tuple.Tuple{code})
 	skuIndexKey := skuIndex.Pack(tuple.Tuple{sku})
 	prodValueKey := prodTable.Pack(tuple.Tuple{id})
 
-	if err = txn.Put(dbi, codeIndexKey, buf, 0); err != nil {
+	if err = txn.Put(dbi, codeIndexKey, keyBuffer, 0); err != nil {
 		return err
 	}
 
-	if err = txn.Put(dbi, skuIndexKey, buf, 0); err != nil {
+	if err = txn.Put(dbi, skuIndexKey, keyBuffer, 0); err != nil {
 		return
 	}
 
-	return txn.Put(dbi, prodValueKey, b.Bytes(), 0)
+	return txn.Put(dbi, prodValueKey, buffer.Bytes(), 0)
 }
 
 func setCounter(txn *lmdb.Txn, dbi lmdb.DBI, counter uint64) (err error) {
