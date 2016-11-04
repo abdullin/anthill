@@ -10,6 +10,7 @@ import (
 	"os"
 	"runtime"
 	"strconv"
+	"strings"
 	"text/tabwriter"
 	"time"
 
@@ -32,9 +33,16 @@ type Options struct {
 
 	// Wipes the database
 	DeleteDb bool
+
+	MaxCount uint64
 }
 
-var counter uint64
+var read uint64
+var saved uint64
+
+var (
+	maxCountOption uint64
+)
 
 func main() {
 
@@ -43,6 +51,7 @@ func main() {
 
 	flag.BoolVar(&opt.DeleteDb, "dd", false, "Deletes the database file")
 	flag.BoolVar(&opt.WriteMap, "wm", false, "Use writeable memory")
+	flag.Uint64Var(&maxCountOption, "max", 1000000, "Max number of records to write")
 
 	flag.Parse()
 
@@ -113,12 +122,13 @@ func main() {
 		ticker := time.NewTicker(1 * time.Second)
 
 		const padding = 1
-		w := tabwriter.NewWriter(os.Stdout, 10, 0, padding, ' ', tabwriter.AlignRight|tabwriter.TabIndent)
-		fmt.Fprintln(w, "tx/s", "\t", "total", "\t", "Size MB", "\t")
+		w := tabwriter.NewWriter(os.Stdout, 12, 0, padding, ' ', tabwriter.AlignRight|tabwriter.TabIndent)
+		fmt.Fprintln(w, "write tx/s", "\t", "read tx/s", "\t", "total", "\t", "Size MB", "\t")
 		w.Flush()
 
 		for {
-			start := counter
+			savedStart := saved
+			readStart := read
 			select {
 			case <-ticker.C:
 
@@ -129,22 +139,98 @@ func main() {
 				// get the size
 				size := fi.Size() / 1024 / 1024
 
-				fmt.Fprintln(w, (counter - start), "\t", counter, "\t", size, "\t")
+				fmt.Fprintln(w, (saved - savedStart), "\t", read-readStart, "\t", saved, "\t", size, "\t")
 
 				w.Flush()
 			}
 		}
 	}()
 
+	benchWrites(env, dbi, txFlags)
+	BenchLookups(env, dbi)
+
+}
+
+// BenchLookups looks up a random sku, then loads the associated
+// product and verifies that its ID is the one we expected
+func BenchLookups(env *lmdb.Env, dbi lmdb.DBI) {
+	fmt.Println("Product sku lookup benchmark")
+
+	for ; true; read++ {
+
+		id := read % saved
+
+		num := strconv.Itoa(int(id))
+
+		sku := "sku" + num
+
+		skuIndexKey := skuIndex.Pack(tuple.Tuple{sku})
+
+		err := env.View(func(txn *lmdb.Txn) (err error) {
+			var data []byte
+			data, err = txn.Get(dbi, skuIndexKey)
+
+			if err != nil {
+				return err
+			}
+
+			productID := order.Uint64(data)
+
+			if productID != id {
+				panic("We got not what we were looking for")
+			}
+
+			productKey := prodTable.Pack(tuple.Tuple{productID})
+
+			data, err = txn.Get(dbi, productKey)
+			if err != nil {
+				return
+			}
+
+			reader := bytes.NewReader(data)
+
+			msg, err := capnp.NewPackedDecoder(reader).Decode()
+			if err != nil {
+				return
+			}
+			product, err := ReadRootProduct(msg)
+			if err != nil {
+				return
+			}
+
+			realSku, err := product.Sku()
+			if err != nil {
+				return
+			}
+			if strings.Compare(realSku, sku) != 0 {
+				panic("Expected and actual SKU don't match")
+			}
+
+			return err
+
+		})
+
+		if err != nil {
+			panic(err)
+		}
+	}
+
+}
+
+func benchWrites(env *lmdb.Env, dbi lmdb.DBI, txFlags uint) {
+
 	// pin this routine to a single thread. This allows us to use
 	// locked version of LMDB txn update
+
 	runtime.LockOSThread()
 	defer runtime.UnlockOSThread()
 
-	for {
+	fmt.Println("Product append benchmark with", maxCountOption, "records")
+
+	for ; saved < maxCountOption; saved++ {
 		err := env.RunTxn(txFlags, func(txn *lmdb.Txn) (err error) {
-			setProduct(txn, dbi, counter)
-			setCounter(txn, dbi, counter)
+			setProduct(txn, dbi, saved)
+			setCounter(txn, dbi, saved)
 
 			return err
 		})
@@ -152,9 +238,7 @@ func main() {
 		if err != nil {
 			log.Fatalf("failed to open database")
 		}
-		counter++
 	}
-
 }
 
 var checkKey = []byte("counter")
@@ -165,12 +249,9 @@ var codeIndex = subspace.Sub("code")
 var skuIndex = subspace.Sub("sku")
 var prodTable = subspace.Sub("prod")
 
-var buffer bytes.Buffer
-var writer = bufio.NewWriter(&buffer)
-var encoder = capnp.NewPackedEncoder(writer)
-
 func setProduct(txn *lmdb.Txn, dbi lmdb.DBI, id uint64) (err error) {
 	// Make a brand new empty message.  A Message allocates Cap'n Proto structs.
+
 	msg, seg, err := capnp.NewMessage(capnp.SingleSegment(nil))
 	if err != nil {
 		return err
@@ -181,7 +262,7 @@ func setProduct(txn *lmdb.Txn, dbi lmdb.DBI, id uint64) (err error) {
 		return err
 	}
 
-	classification, err := NewClassification(seg)
+	classification, err := prod.NewClassification()
 	if err != nil {
 		return err
 	}
@@ -200,8 +281,9 @@ func setProduct(txn *lmdb.Txn, dbi lmdb.DBI, id uint64) (err error) {
 	prod.SetId(id)
 	prod.SetClassification(classification)
 
-	buffer.Reset()
-
+	var buffer bytes.Buffer
+	var writer = bufio.NewWriter(&buffer)
+	var encoder = capnp.NewPackedEncoder(writer)
 	err = encoder.Encode(msg)
 	if err != nil {
 		return err
