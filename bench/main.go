@@ -11,6 +11,7 @@ import (
 	"runtime"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"text/tabwriter"
 	"time"
 
@@ -148,17 +149,19 @@ func main() {
 
 	benchWrites(env, dbi, txFlags)
 	BenchLookups(env, dbi)
-
 }
 
 // BenchLookups looks up a random sku, then loads the associated
-// product and verifies that its ID is the one we expected
+// product and verifies that its SKU is the one we expected
 func BenchLookups(env *lmdb.Env, dbi lmdb.DBI) {
+
 	fmt.Println("Product sku lookup benchmark")
 
-	for ; true; read++ {
+	for {
 
-		id := read % saved
+		curr := atomic.AddUint64(&read, 1)
+
+		id := curr % saved
 
 		num := strconv.Itoa(int(id))
 
@@ -166,7 +169,7 @@ func BenchLookups(env *lmdb.Env, dbi lmdb.DBI) {
 
 		skuIndexKey := skuIndex.Pack(tuple.Tuple{sku})
 
-		err := env.View(func(txn *lmdb.Txn) (err error) {
+		err := env.RunTxn(lmdb.Readonly, func(txn *lmdb.Txn) (err error) {
 			var data []byte
 			data, err = txn.Get(dbi, skuIndexKey)
 
