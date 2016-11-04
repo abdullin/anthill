@@ -43,6 +43,7 @@ var saved uint64
 
 var (
 	maxCountOption uint64
+	maxMapSizeMb   int64
 )
 
 func main() {
@@ -53,6 +54,7 @@ func main() {
 	flag.BoolVar(&opt.DeleteDb, "dd", false, "Deletes the database file")
 	flag.BoolVar(&opt.WriteMap, "wm", false, "Use writeable memory")
 	flag.Uint64Var(&maxCountOption, "max", 1000000, "Max number of records to write")
+	flag.Int64Var(&maxMapSizeMb, "mb", 1024, "Max map size")
 
 	flag.Parse()
 
@@ -78,12 +80,11 @@ func main() {
 		log.Fatalf("Failed to configure env: %s", err)
 	}
 
-	var dbSize int64 = 1 << 30
-	fmt.Println("Setting map size to", dbSize/1024/1024, "MB")
+	fmt.Println("Setting map size to", maxMapSizeMb, "MB")
 
-	err = env.SetMapSize(dbSize)
+	err = env.SetMapSize(maxMapSizeMb * 1024 * 1024)
 	if err != nil {
-		log.Fatalf("Failed to set map size to %d", 1<<30)
+		log.Fatalf("Failed to set map size to %d", maxMapSizeMb)
 	}
 
 	var envFlags uint
