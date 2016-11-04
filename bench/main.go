@@ -26,17 +26,26 @@ type Options struct {
 
 	// Disables fsync
 	NoSync bool
+
+	// Wipes the database
+	DeleteDb bool
 }
 
 func main() {
 
-	if err := os.RemoveAll("db"); err != nil {
-		log.Fatalf("Failed to cleanup db folder: %s", err)
-	}
-
 	opt := &Options{}
 	flag.BoolVar(&opt.NoSync, "ns", false, "Enables no flush mode (makes LMDB ACI instead of ACID)")
+
+	flag.BoolVar(&opt.DeleteDb, "dd", false, "Deletes the database file")
+
 	flag.Parse()
+
+	if opt.DeleteDb {
+		fmt.Println("Deleting the DB")
+		if err := os.RemoveAll("db"); err != nil {
+			log.Fatalf("Failed to cleanup db folder: %s", err)
+		}
+	}
 
 	env, err := lmdb.NewEnv()
 
@@ -87,7 +96,7 @@ func main() {
 	go func() {
 
 		const padding = 1
-		w := tabwriter.NewWriter(os.Stdout, 10, 0, padding, ' ', tabwriter.AlignRight)
+		w := tabwriter.NewWriter(os.Stdout, 10, 0, padding, ' ', tabwriter.AlignRight|tabwriter.TabIndent)
 		fmt.Fprintln(w, "tx/s", "\t", "total", "\t", "Size MB", "\t")
 		w.Flush()
 
@@ -103,10 +112,9 @@ func main() {
 				// get the size
 				size := fi.Size() / 1024 / 1024
 
-				fmt.Fprintln(w, (counter-start)/1, "\t", counter, "\t", size, "\t")
+				fmt.Fprintln(w, (counter - start), "\t", counter, "\t", size, "\t")
 
 				w.Flush()
-				// do stuff
 			}
 		}
 	}()
