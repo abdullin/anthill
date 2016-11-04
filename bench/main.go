@@ -114,7 +114,7 @@ func main() {
 
 		const padding = 1
 		w := tabwriter.NewWriter(os.Stdout, 10, 0, padding, ' ', tabwriter.AlignRight|tabwriter.TabIndent)
-		fmt.Fprintln(w, "tx/s", "\t", "products total", "\t", "Size MB", "\t")
+		fmt.Fprintln(w, "tx/s", "\t", "total", "\t", "Size MB", "\t")
 		w.Flush()
 
 		for {
