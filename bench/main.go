@@ -170,6 +170,7 @@ func BenchLookups(env *lmdb.Env, dbi lmdb.DBI) {
 		skuIndexKey := skuIndex.Pack(tuple.Tuple{sku})
 
 		err := env.RunTxn(lmdb.Readonly, func(txn *lmdb.Txn) (err error) {
+			txn.RawRead = true
 			var data []byte
 			data, err = txn.Get(dbi, skuIndexKey)
 
