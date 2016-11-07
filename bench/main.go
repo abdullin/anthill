@@ -242,13 +242,11 @@ func benchWrites(env *lmdb.Env, dbi lmdb.DBI, txFlags uint) {
 
 			for j := 0; j < batchProducts; j++ {
 
-				saved++
-
 				setProduct(txn, dbi, saved)
-
+				saved++
 			}
 
-			setCounter(txn, dbi, saved)
+			setCounter(txn, dbi, saved-1)
 
 			return err
 		})
@@ -256,6 +254,10 @@ func benchWrites(env *lmdb.Env, dbi lmdb.DBI, txFlags uint) {
 		if err != nil {
 			log.Fatalf("failed to open database")
 		}
+	}
+
+	if err := env.Sync(true); err != nil {
+		log.Fatalf("Failed to fsync %s", err)
 	}
 }
 
