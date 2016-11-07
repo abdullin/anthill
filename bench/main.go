@@ -44,6 +44,8 @@ var saved uint64
 var (
 	maxCountOption uint64
 	maxMapSizeMb   int64
+
+	batchProducts int
 )
 
 func main() {
@@ -55,6 +57,7 @@ func main() {
 	flag.BoolVar(&opt.WriteMap, "wm", false, "Use writeable memory")
 	flag.Uint64Var(&maxCountOption, "max", 1000000, "Max number of records to write")
 	flag.Int64Var(&maxMapSizeMb, "mb", 1024, "Max map size")
+	flag.IntVar(&batchProducts, "batch", 1, "Products batching")
 
 	flag.Parse()
 
@@ -232,9 +235,19 @@ func benchWrites(env *lmdb.Env, dbi lmdb.DBI, txFlags uint) {
 
 	fmt.Println("Product append benchmark with", maxCountOption, "records")
 
-	for ; saved < maxCountOption; saved++ {
+	var i uint64
+
+	for i = 0; i < maxCountOption; i++ {
 		err := env.RunTxn(txFlags, func(txn *lmdb.Txn) (err error) {
-			setProduct(txn, dbi, saved)
+
+			for j := 0; j < batchProducts; j++ {
+
+				saved++
+
+				setProduct(txn, dbi, saved)
+
+			}
+
 			setCounter(txn, dbi, saved)
 
 			return err
