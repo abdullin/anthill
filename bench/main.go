@@ -19,6 +19,7 @@ import (
 
 	"github.com/abdullin/lex-go/subspace"
 	"github.com/abdullin/lex-go/tuple"
+	"github.com/pborman/uuid"
 
 	"github.com/bmatsuo/lmdb-go/lmdb"
 )
@@ -78,7 +79,7 @@ func main() {
 	// configure and open the environment.  most configuration must be done
 	// before opening the environment.
 
-	err = env.SetMaxDBs(1)
+	err = env.SetMaxDBs(5)
 	if err != nil {
 		log.Fatalf("Failed to configure env: %s", err)
 	}
@@ -153,23 +154,33 @@ func main() {
 
 	benchWrites(env, dbi, txFlags)
 
-	BenchLookups(env, dbi)
+	BenchLookups(env)
 
 }
 
 // BenchLookups looks up a random sku, then loads the associated
 // product and verifies that its SKU is the one we expected
-func BenchLookups(env *lmdb.Env, dbi lmdb.DBI) {
+func BenchLookups(env *lmdb.Env) {
 
+	var dbi lmdb.DBI
+	var err error
 	fmt.Println("Product sku lookup benchmark")
 
+	err = env.Update(func(txn *lmdb.Txn) (err error) {
+		dbi, err = txn.OpenDBI("agg", 0)
+		return err
+	})
+	if err != nil {
+		log.Fatalf("failed to open database")
+	}
+
 	txn, err := env.BeginTxn(nil, lmdb.Readonly)
+
+	defer txn.Abort()
 
 	if err != nil {
 		panic(err)
 	}
-
-	defer txn.Abort()
 
 	for {
 		txn.Reset()
@@ -204,11 +215,7 @@ func handleRead(txn *lmdb.Txn, dbi lmdb.DBI) (err error) {
 		return err
 	}
 
-	productID := order.Uint64(data)
-
-	if productID != id {
-		panic("We got not what we were looking for")
-	}
+	productID := data
 
 	productKey := prodTable.Pack(tuple.Tuple{productID})
 
@@ -309,7 +316,9 @@ func setProduct(txn *lmdb.Txn, dbi lmdb.DBI, id uint64) (err error) {
 
 	num := strconv.Itoa(int(id))
 
-	code := "code" + num
+	productID := uuid.NewRandom()
+
+	code := "code" + productID.String()
 	sku := "sku" + num
 
 	prod.SetDescription("description")
@@ -329,12 +338,11 @@ func setProduct(txn *lmdb.Txn, dbi lmdb.DBI, id uint64) (err error) {
 		return err
 	}
 
-	var keyBuffer = make([]byte, 8, 8)
-	order.PutUint64(keyBuffer, uint64(id))
+	var keyBuffer = []byte(productID)
 
 	codeIndexKey := codeIndex.Pack(tuple.Tuple{code})
 	skuIndexKey := skuIndex.Pack(tuple.Tuple{sku})
-	prodValueKey := prodTable.Pack(tuple.Tuple{id})
+	prodValueKey := prodTable.Pack(tuple.Tuple{keyBuffer})
 
 	if err = txn.Put(dbi, codeIndexKey, keyBuffer, 0); err != nil {
 		return err
