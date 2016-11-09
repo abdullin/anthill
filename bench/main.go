@@ -152,7 +152,9 @@ func main() {
 	}()
 
 	benchWrites(env, dbi, txFlags)
+
 	BenchLookups(env, dbi)
+
 }
 
 // BenchLookups looks up a random sku, then loads the associated
@@ -161,67 +163,80 @@ func BenchLookups(env *lmdb.Env, dbi lmdb.DBI) {
 
 	fmt.Println("Product sku lookup benchmark")
 
+	txn, err := env.BeginTxn(nil, lmdb.Readonly)
+
+	if err != nil {
+		panic(err)
+	}
+
+	defer txn.Abort()
+
 	for {
+		txn.Reset()
+		txn.Renew()
 
-		curr := atomic.AddUint64(&read, 1)
-
-		id := curr % saved
-
-		num := strconv.Itoa(int(id))
-
-		sku := "sku" + num
-
-		skuIndexKey := skuIndex.Pack(tuple.Tuple{sku})
-
-		err := env.RunTxn(lmdb.Readonly, func(txn *lmdb.Txn) (err error) {
-			txn.RawRead = true
-			var data []byte
-			data, err = txn.Get(dbi, skuIndexKey)
-
-			if err != nil {
-				return err
-			}
-
-			productID := order.Uint64(data)
-
-			if productID != id {
-				panic("We got not what we were looking for")
-			}
-
-			productKey := prodTable.Pack(tuple.Tuple{productID})
-
-			data, err = txn.Get(dbi, productKey)
-			if err != nil {
-				return
-			}
-
-			reader := bytes.NewReader(data)
-
-			msg, err := capnp.NewPackedDecoder(reader).Decode()
-			if err != nil {
-				return
-			}
-			product, err := ReadRootProduct(msg)
-			if err != nil {
-				return
-			}
-
-			realSku, err := product.Sku()
-			if err != nil {
-				return
-			}
-			if strings.Compare(realSku, sku) != 0 {
-				panic("Expected and actual SKU don't match")
-			}
-
-			return err
-
-		})
+		err = handleRead(txn, dbi)
 
 		if err != nil {
 			panic(err)
 		}
 	}
+
+}
+
+func handleRead(txn *lmdb.Txn, dbi lmdb.DBI) (err error) {
+
+	curr := atomic.AddUint64(&read, 1)
+
+	id := curr % saved
+
+	num := strconv.Itoa(int(id))
+
+	sku := "sku" + num
+
+	skuIndexKey := skuIndex.Pack(tuple.Tuple{sku})
+
+	txn.RawRead = true
+	var data []byte
+	data, err = txn.Get(dbi, skuIndexKey)
+
+	if err != nil {
+		return err
+	}
+
+	productID := order.Uint64(data)
+
+	if productID != id {
+		panic("We got not what we were looking for")
+	}
+
+	productKey := prodTable.Pack(tuple.Tuple{productID})
+
+	data, err = txn.Get(dbi, productKey)
+	if err != nil {
+		return
+	}
+
+	reader := bytes.NewReader(data)
+
+	msg, err := capnp.NewPackedDecoder(reader).Decode()
+	if err != nil {
+		return
+	}
+	product, err := ReadRootProduct(msg)
+	if err != nil {
+		return
+	}
+
+	realSku, err := product.Sku()
+	if err != nil {
+		return
+	}
+	if strings.Compare(realSku, sku) != 0 {
+		panic("Expected and actual SKU don't match")
+	}
+
+	return err
 
 }
 
@@ -237,7 +252,9 @@ func benchWrites(env *lmdb.Env, dbi lmdb.DBI, txFlags uint) {
 
 	var i uint64
 
-	for i = 0; i < maxCountOption; i++ {
+	var iterations = maxCountOption / uint64(batchProducts)
+
+	for i = 0; i < iterations; i++ {
 		err := env.RunTxn(txFlags, func(txn *lmdb.Txn) (err error) {
 
 			for j := 0; j < batchProducts; j++ {
