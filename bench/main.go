@@ -30,6 +30,7 @@ var saved uint64
 var (
 	maxCountOption uint64
 	maxMapSizeMb   int64
+	envCount       int
 
 	batchProducts int
 	reuseDB       bool
@@ -37,29 +38,28 @@ var (
 	asyncWrites   bool
 )
 
-func main() {
-	flag.BoolVar(&asyncWrites, "async", false, "Enables no flush mode (makes LMDB ACI instead of ACID)")
-	flag.BoolVar(&reuseDB, "reuse-db", true, "Keeps the database file")
-	flag.BoolVar(&writeMap, "write-map", false, "Use writeable memory")
-	flag.Uint64Var(&maxCountOption, "max", 1000000, "Max number of records to write")
-	flag.Int64Var(&maxMapSizeMb, "mb", 1024, "Max map size")
-	flag.IntVar(&batchProducts, "batch", 1, "Products batching")
+type handle struct {
+	env  *lmdb.Env
+	name string
+}
 
-	flag.Parse()
+func newEnv(name string) (h handle) {
+
+	var err error
+	var env *lmdb.Env
 
 	if !reuseDB {
 		fmt.Println("Deleting the DB")
-		if err := os.RemoveAll("db"); err != nil {
+		if err := os.RemoveAll(name); err != nil {
 			log.Fatalf("Failed to cleanup db folder: %s", err)
 		}
 	}
 
-	env, err := lmdb.NewEnv()
+	env, err = lmdb.NewEnv()
 
 	if err != nil {
 		log.Fatalf("Failed to create env: %s", err)
 	}
-	defer env.Close()
 
 	// configure and open the environment.  most configuration must be done
 	// before opening the environment.
@@ -77,78 +77,109 @@ func main() {
 	}
 
 	var envFlags uint
-	var txFlags uint
 
 	if asyncWrites {
 		envFlags |= lmdb.NoSync
 		fmt.Println("  env: NoSync (let OS flush pages to disk whenever it wants)")
-	}
-	if writeMap {
-		txFlags |= lmdb.WriteMap
-		fmt.Println("   tx: WriteMap (use writeable map pages)")
 	}
 
 	if err := env.SetFlags(envFlags); err != nil {
 		log.Fatalf("Failed to set flags %s", err)
 	}
 
-	os.MkdirAll("db", os.ModePerm)
-	err = env.Open("db", 0, 0644)
+	os.MkdirAll(name, os.ModePerm)
+	err = env.Open(name, 0, 0644)
 	if err != nil {
 		log.Fatalf("Failed to open db")
 	}
 
 	// open a database that can be used as long as the enviroment is mapped.
-	var dbi lmdb.DBI
 	err = env.Update(func(txn *lmdb.Txn) (err error) {
-		dbi, err = txn.CreateDBI("agg")
+		_, err = txn.CreateDBI("agg")
 		return err
 	})
 	if err != nil {
 		log.Fatalf("failed to open database")
 	}
 
-	go func() {
+	return handle{env, name}
+}
 
-		ticker := time.NewTicker(1 * time.Second)
+func main() {
 
-		const padding = 1
-		w := tabwriter.NewWriter(os.Stdout, 12, 0, padding, ' ', tabwriter.AlignRight|tabwriter.TabIndent)
-		fmt.Fprintln(w, "write tx/s", "\t", "read tx/s", "\t", "total", "\t", "Size MB", "\t")
-		w.Flush()
+	flag.BoolVar(&asyncWrites, "async", false, "Enables no flush mode (makes LMDB ACI instead of ACID)")
+	flag.BoolVar(&reuseDB, "reuse-db", true, "Keeps the database file")
+	flag.BoolVar(&writeMap, "write-map", false, "Use writeable memory")
+	flag.Uint64Var(&maxCountOption, "max", 1000000, "Max number of records to write")
+	flag.Int64Var(&maxMapSizeMb, "mb", 1024, "Max map size")
+	flag.IntVar(&batchProducts, "batch", 1, "Products batching")
+	flag.IntVar(&envCount, "env-count", 1, "Environment count")
 
-		for {
-			savedStart := saved
-			readStart := read
-			select {
-			case <-ticker.C:
+	flag.Parse()
 
-				fi, e := os.Stat("db/data.mdb")
-				if e != nil {
-					panic(e)
-				}
-				// get the size
-				size := fi.Size() / 1024 / 1024
+	var txFlags uint
+	if writeMap {
+		txFlags |= lmdb.WriteMap
+		fmt.Println("   tx: WriteMap (use writeable map pages)")
+	}
 
-				fmt.Fprintln(w, (saved - savedStart), "\t", read-readStart, "\t", saved, "\t", size, "\t")
+	log.Printf("Using %d environments", envCount)
 
-				w.Flush()
+	var handles = make([]handle, envCount, envCount)
+
+	for e := 0; e < envCount; e++ {
+		name := "db" + strconv.Itoa(e)
+
+		h := newEnv(name)
+		defer h.env.Close()
+		handles[e] = h
+	}
+
+	for e := 0; e < envCount; e++ {
+
+		h := handles[e]
+
+		go func() {
+			benchWrites(h, txFlags)
+			benchLookups(h)
+		}()
+	}
+
+	ticker := time.NewTicker(1 * time.Second)
+
+	const padding = 1
+	w := tabwriter.NewWriter(os.Stdout, 12, 0, padding, ' ', tabwriter.AlignRight|tabwriter.TabIndent)
+	fmt.Fprintln(w, "write tx/s", "\t", "read tx/s", "\t", "total", "\t", "Size MB", "\t")
+	w.Flush()
+
+	for {
+		savedStart := saved
+		readStart := read
+		select {
+		case <-ticker.C:
+
+			fi, e := os.Stat("db/data.mdb")
+			if e != nil {
+				panic(e)
 			}
+			// get the size
+			size := fi.Size() / 1024 / 1024
+
+			fmt.Fprintln(w, (saved - savedStart), "\t", read-readStart, "\t", saved, "\t", size, "\t")
+
+			w.Flush()
 		}
-	}()
-
-	benchWrites(env, dbi, txFlags)
-
-	BenchLookups(env)
+	}
 
 }
 
 // BenchLookups looks up a random sku, then loads the associated
 // product and verifies that its SKU is the one we expected
-func BenchLookups(env *lmdb.Env) {
+func benchLookups(h handle) {
 
 	var dbi lmdb.DBI
 	var err error
+	var env = h.env
 	fmt.Println("Product sku lookup benchmark")
 
 	err = env.Update(func(txn *lmdb.Txn) (err error) {
@@ -232,13 +263,24 @@ func handleRead(txn *lmdb.Txn, dbi lmdb.DBI) (err error) {
 
 }
 
-func benchWrites(env *lmdb.Env, dbi lmdb.DBI, txFlags uint) {
-
-	// pin this routine to a single thread. This allows us to use
-	// locked version of LMDB txn update
+func benchWrites(h handle, txFlags uint) {
 
 	runtime.LockOSThread()
 	defer runtime.UnlockOSThread()
+	var err error
+	var dbi lmdb.DBI
+	env := h.env
+
+	err = h.env.Update(func(txn *lmdb.Txn) (err error) {
+		dbi, err = txn.OpenDBI("agg", 0)
+		return err
+	})
+	if err != nil {
+		log.Fatalf("failed to open database")
+	}
+
+	// pin this routine to a single thread. This allows us to use
+	// locked version of LMDB txn update
 
 	fmt.Println("Product append benchmark with", maxCountOption, "records")
 
@@ -247,7 +289,7 @@ func benchWrites(env *lmdb.Env, dbi lmdb.DBI, txFlags uint) {
 	var iterations = maxCountOption / uint64(batchProducts)
 
 	for i = 0; i < iterations; i++ {
-		err := env.RunTxn(txFlags, func(txn *lmdb.Txn) (err error) {
+		err = env.RunTxn(txFlags, func(txn *lmdb.Txn) (err error) {
 
 			for j := 0; j < batchProducts; j++ {
 
@@ -268,6 +310,7 @@ func benchWrites(env *lmdb.Env, dbi lmdb.DBI, txFlags uint) {
 	if err := env.Sync(true); err != nil {
 		log.Fatalf("Failed to fsync %s", err)
 	}
+
 }
 
 var checkKey = []byte("counter")
