@@ -34,6 +34,8 @@ var (
 	reuseDB       bool
 	writeMap      bool
 	asyncWrites   bool
+
+	parallelRW bool
 )
 
 type handle struct {
@@ -62,11 +64,13 @@ func newEnv(name string) (h *handle) {
 		log.Fatalf("Failed to configure env: %s", err)
 	}
 
-	fmt.Println("Setting map size to", maxMapSizeMb, "MB")
+	sizeMbs := maxMapSizeMb / int64(envCount)
 
-	err = env.SetMapSize(maxMapSizeMb * 1024 * 1024)
+	fmt.Println(name, "setting map size to", sizeMbs, "MB * ", envCount, "(size split between writers)")
+
+	err = env.SetMapSize(sizeMbs * 1024 * 1024)
 	if err != nil {
-		log.Fatalf("Failed to set map size to %d", maxMapSizeMb)
+		log.Fatalf("Failed to set map size to %d", sizeMbs)
 	}
 
 	var envFlags uint
@@ -111,11 +115,13 @@ func main() {
 	flag.BoolVar(&asyncWrites, "async", false, "Enables no flush mode (makes LMDB ACI instead of ACID)")
 	flag.BoolVar(&reuseDB, "reuse-db", false, "Keeps the database file")
 	flag.BoolVar(&writeMap, "write-map", false, "Use writeable memory")
-	flag.Uint64Var(&maxCountOption, "max", 1000000, "Max number of records to write")
-	flag.Int64Var(&maxMapSizeMb, "mb", 1024, "Max map size")
+
+	flag.BoolVar(&parallelRW, "parallel-rw", false, "Reads and writes happen in parallel")
+	flag.Uint64Var(&maxCountOption, "max", 1000000, "Max number of records to write across all envs")
+	flag.Int64Var(&maxMapSizeMb, "mb", 1024, "Max map size for all envs")
 	flag.IntVar(&batchProducts, "batch", 1, "Products batching")
-	flag.IntVar(&envCount, "env-count", 1, "Environment count")
-	flag.IntVar(&readCount, "read-count", 1, "Read threads")
+	flag.IntVar(&envCount, "env-count", 1, "Environement and write thread count")
+	flag.IntVar(&readCount, "read-count", 1, "Read threads PER ENV")
 
 	flag.Parse()
 
@@ -125,7 +131,7 @@ func main() {
 		fmt.Println("   tx: WriteMap (use writeable map pages)")
 	}
 
-	fmt.Println("Environments", envCount)
+	fmt.Println("Writers and environments:", envCount)
 
 	if !reuseDB {
 		fmt.Println("Deleting the DB")
@@ -150,16 +156,21 @@ func main() {
 
 		h := handles[e]
 
-		go func() {
-			benchWrites(h, txFlags)
+		if parallelRW {
+			go benchWrites(h, txFlags)
 
 			for r := 0; r < readCount; r++ {
-				go func() {
-					benchLookups(h)
-				}()
-
+				go benchLookups(h)
 			}
-		}()
+
+		} else {
+			go func() {
+				benchWrites(h, txFlags)
+				for r := 0; r < readCount; r++ {
+					go benchLookups(h)
+				}
+			}()
+		}
 	}
 
 	ticker := time.NewTicker(1 * time.Second)
@@ -245,9 +256,15 @@ func benchLookups(h *handle) {
 
 func handleRead(txn *lmdb.Txn, dbi lmdb.DBI, h *handle) (err error) {
 
+	saved := atomic.LoadUint64(&h.saved)
+	if saved == 0 {
+		time.Sleep(time.Millisecond)
+		return nil
+	}
+
 	curr := atomic.AddUint64(&h.read, 1)
 
-	id := curr % h.saved
+	id := curr % saved
 
 	num := strconv.Itoa(int(id))
 
@@ -314,11 +331,9 @@ func benchWrites(h *handle, txFlags uint) {
 	// pin this routine to a single thread. This allows us to use
 	// locked version of LMDB txn update
 
-	fmt.Println("Product append benchmark with", maxCountOption, "records")
-
 	var i uint64
 
-	var iterations = maxCountOption / uint64(batchProducts)
+	var iterations = maxCountOption / uint64(batchProducts) / uint64(envCount)
 
 	var savedProducts uint64
 
@@ -333,10 +348,9 @@ func benchWrites(h *handle, txFlags uint) {
 
 			setCounter(txn, dbi, savedProducts-1)
 
-			h.saved = savedProducts
-
 			return err
 		})
+		atomic.StoreUint64(&h.saved, savedProducts)
 
 		if err != nil {
 			log.Fatalf("failed to open database")
