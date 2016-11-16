@@ -24,21 +24,6 @@ import (
 	"github.com/bmatsuo/lmdb-go/lmdb"
 )
 
-// Options all cli params for this command
-type Options struct {
-
-	// Disables fsync
-	NoSync bool
-
-	//
-	WriteMap bool
-
-	// Wipes the database
-	DeleteDb bool
-
-	MaxCount uint64
-}
-
 var read uint64
 var saved uint64
 
@@ -47,22 +32,22 @@ var (
 	maxMapSizeMb   int64
 
 	batchProducts int
+	reuseDB       bool
+	writeMap      bool
+	asyncWrites   bool
 )
 
 func main() {
-
-	opt := &Options{}
-	flag.BoolVar(&opt.NoSync, "ns", false, "Enables no flush mode (makes LMDB ACI instead of ACID)")
-
-	flag.BoolVar(&opt.DeleteDb, "dd", false, "Deletes the database file")
-	flag.BoolVar(&opt.WriteMap, "wm", false, "Use writeable memory")
+	flag.BoolVar(&asyncWrites, "async", false, "Enables no flush mode (makes LMDB ACI instead of ACID)")
+	flag.BoolVar(&reuseDB, "reuse-db", true, "Keeps the database file")
+	flag.BoolVar(&writeMap, "write-map", false, "Use writeable memory")
 	flag.Uint64Var(&maxCountOption, "max", 1000000, "Max number of records to write")
 	flag.Int64Var(&maxMapSizeMb, "mb", 1024, "Max map size")
 	flag.IntVar(&batchProducts, "batch", 1, "Products batching")
 
 	flag.Parse()
 
-	if opt.DeleteDb {
+	if !reuseDB {
 		fmt.Println("Deleting the DB")
 		if err := os.RemoveAll("db"); err != nil {
 			log.Fatalf("Failed to cleanup db folder: %s", err)
@@ -94,11 +79,11 @@ func main() {
 	var envFlags uint
 	var txFlags uint
 
-	if opt.NoSync {
+	if asyncWrites {
 		envFlags |= lmdb.NoSync
 		fmt.Println("  env: NoSync (let OS flush pages to disk whenever it wants)")
 	}
-	if opt.WriteMap {
+	if writeMap {
 		txFlags |= lmdb.WriteMap
 		fmt.Println("   tx: WriteMap (use writeable map pages)")
 	}
