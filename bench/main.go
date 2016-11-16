@@ -24,9 +24,6 @@ import (
 	"github.com/bmatsuo/lmdb-go/lmdb"
 )
 
-var read uint64
-var saved uint64
-
 var (
 	maxCountOption uint64
 	maxMapSizeMb   int64
@@ -39,21 +36,16 @@ var (
 )
 
 type handle struct {
-	env  *lmdb.Env
-	name string
+	env   *lmdb.Env
+	name  string
+	saved uint64
+	read  uint64
 }
 
-func newEnv(name string) (h handle) {
+func newEnv(name string) (h *handle) {
 
 	var err error
 	var env *lmdb.Env
-
-	if !reuseDB {
-		fmt.Println("Deleting the DB")
-		if err := os.RemoveAll(name); err != nil {
-			log.Fatalf("Failed to cleanup db folder: %s", err)
-		}
-	}
 
 	env, err = lmdb.NewEnv()
 
@@ -94,21 +86,29 @@ func newEnv(name string) (h handle) {
 	}
 
 	// open a database that can be used as long as the enviroment is mapped.
+
+	var dbi lmdb.DBI
 	err = env.Update(func(txn *lmdb.Txn) (err error) {
-		_, err = txn.CreateDBI("agg")
+		dbi, err = txn.CreateDBI("agg")
 		return err
 	})
 	if err != nil {
-		log.Fatalf("failed to open database")
+		log.Fatalf("failed to create database")
 	}
 
-	return handle{env, name}
+	env.CloseDBI(dbi)
+
+	return &handle{env, name, 0, 0}
+}
+
+func dbName(e int) string {
+	return "db/" + strconv.Itoa(e)
 }
 
 func main() {
 
 	flag.BoolVar(&asyncWrites, "async", false, "Enables no flush mode (makes LMDB ACI instead of ACID)")
-	flag.BoolVar(&reuseDB, "reuse-db", true, "Keeps the database file")
+	flag.BoolVar(&reuseDB, "reuse-db", false, "Keeps the database file")
 	flag.BoolVar(&writeMap, "write-map", false, "Use writeable memory")
 	flag.Uint64Var(&maxCountOption, "max", 1000000, "Max number of records to write")
 	flag.Int64Var(&maxMapSizeMb, "mb", 1024, "Max map size")
@@ -123,12 +123,21 @@ func main() {
 		fmt.Println("   tx: WriteMap (use writeable map pages)")
 	}
 
-	log.Printf("Using %d environments", envCount)
+	fmt.Println("Environments", envCount)
 
-	var handles = make([]handle, envCount, envCount)
+	if !reuseDB {
+		fmt.Println("Deleting the DB")
+		if err := os.RemoveAll("db"); err != nil {
+			log.Fatalf("Failed to cleanup db folder: %s", err)
+		}
+	} else {
+		fmt.Println("Keeping the db")
+	}
+
+	var handles = make([]*handle, envCount, envCount)
 
 	for e := 0; e < envCount; e++ {
-		name := "db" + strconv.Itoa(e)
+		name := dbName(e)
 
 		h := newEnv(name)
 		defer h.env.Close()
@@ -153,19 +162,33 @@ func main() {
 	w.Flush()
 
 	for {
-		savedStart := saved
-		readStart := read
+
+		var savedStart, readStart uint64
+
+		for e := 0; e < envCount; e++ {
+			savedStart += handles[e].saved
+			readStart += handles[e].read
+		}
+
 		select {
 		case <-ticker.C:
 
-			fi, e := os.Stat("db/data.mdb")
-			if e != nil {
-				panic(e)
-			}
-			// get the size
-			size := fi.Size() / 1024 / 1024
+			var size int64
+			var savedCurrent, readCurrent uint64
 
-			fmt.Fprintln(w, (saved - savedStart), "\t", read-readStart, "\t", saved, "\t", size, "\t")
+			for e := 0; e < envCount; e++ {
+
+				fi, err := os.Stat(dbName(e) + "/data.mdb")
+				if err != nil {
+					panic(err)
+				}
+				// get the size
+				size += fi.Size() / 1024 / 1024
+				savedCurrent += handles[e].saved
+				readCurrent += handles[e].read
+			}
+
+			fmt.Fprintln(w, (savedCurrent - savedStart), "\t", readCurrent-readStart, "\t", savedCurrent, "\t", size, "\t")
 
 			w.Flush()
 		}
@@ -175,17 +198,18 @@ func main() {
 
 // BenchLookups looks up a random sku, then loads the associated
 // product and verifies that its SKU is the one we expected
-func benchLookups(h handle) {
+func benchLookups(h *handle) {
 
 	var dbi lmdb.DBI
 	var err error
 	var env = h.env
-	fmt.Println("Product sku lookup benchmark")
 
 	err = env.Update(func(txn *lmdb.Txn) (err error) {
 		dbi, err = txn.OpenDBI("agg", 0)
 		return err
 	})
+
+	defer env.CloseDBI(dbi)
 	if err != nil {
 		log.Fatalf("failed to open database")
 	}
@@ -202,7 +226,7 @@ func benchLookups(h handle) {
 		txn.Reset()
 		txn.Renew()
 
-		err = handleRead(txn, dbi)
+		err = handleRead(txn, dbi, h)
 
 		if err != nil {
 			panic(err)
@@ -211,11 +235,11 @@ func benchLookups(h handle) {
 
 }
 
-func handleRead(txn *lmdb.Txn, dbi lmdb.DBI) (err error) {
+func handleRead(txn *lmdb.Txn, dbi lmdb.DBI, h *handle) (err error) {
 
-	curr := atomic.AddUint64(&read, 1)
+	curr := atomic.AddUint64(&h.read, 1)
 
-	id := curr % saved
+	id := curr % h.saved
 
 	num := strconv.Itoa(int(id))
 
@@ -228,7 +252,7 @@ func handleRead(txn *lmdb.Txn, dbi lmdb.DBI) (err error) {
 	data, err = txn.Get(dbi, skuIndexKey)
 
 	if err != nil {
-		return err
+		return fmt.Errorf("Failed to find product %s: %s", num, err)
 	}
 
 	productID := data
@@ -237,7 +261,7 @@ func handleRead(txn *lmdb.Txn, dbi lmdb.DBI) (err error) {
 
 	data, err = txn.Get(dbi, productKey)
 	if err != nil {
-		return
+		return fmt.Errorf("Failed to load product %s: %s", num, err)
 	}
 
 	reader := bytes.NewReader(data)
@@ -263,7 +287,7 @@ func handleRead(txn *lmdb.Txn, dbi lmdb.DBI) (err error) {
 
 }
 
-func benchWrites(h handle, txFlags uint) {
+func benchWrites(h *handle, txFlags uint) {
 
 	runtime.LockOSThread()
 	defer runtime.UnlockOSThread()
@@ -288,16 +312,22 @@ func benchWrites(h handle, txFlags uint) {
 
 	var iterations = maxCountOption / uint64(batchProducts)
 
+	var savedProducts uint64
+
 	for i = 0; i < iterations; i++ {
 		err = env.RunTxn(txFlags, func(txn *lmdb.Txn) (err error) {
 
 			for j := 0; j < batchProducts; j++ {
 
-				setProduct(txn, dbi, saved)
-				saved++
+				setProduct(txn, dbi, savedProducts)
+				savedProducts++
 			}
 
-			setCounter(txn, dbi, saved-1)
+			setCounter(txn, dbi, savedProducts-1)
+
+			h.saved = savedProducts
+
+			//
 
 			return err
 		})
