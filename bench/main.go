@@ -28,6 +28,7 @@ var (
 	maxCountOption uint64
 	maxMapSizeMb   int64
 	envCount       int
+	readCount      int
 
 	batchProducts int
 	reuseDB       bool
@@ -114,6 +115,7 @@ func main() {
 	flag.Int64Var(&maxMapSizeMb, "mb", 1024, "Max map size")
 	flag.IntVar(&batchProducts, "batch", 1, "Products batching")
 	flag.IntVar(&envCount, "env-count", 1, "Environment count")
+	flag.IntVar(&readCount, "read-count", 1, "Read threads")
 
 	flag.Parse()
 
@@ -150,7 +152,13 @@ func main() {
 
 		go func() {
 			benchWrites(h, txFlags)
-			benchLookups(h)
+
+			for r := 0; r < readCount; r++ {
+				go func() {
+					benchLookups(h)
+				}()
+
+			}
 		}()
 	}
 
@@ -326,8 +334,6 @@ func benchWrites(h *handle, txFlags uint) {
 			setCounter(txn, dbi, savedProducts-1)
 
 			h.saved = savedProducts
-
-			//
 
 			return err
 		})
