@@ -1,0 +1,203 @@
+
+* Introduction
+
+Anthill is a small research project in building HA event-driven
+business apps with specific technologies and trade-offs (focus on
+banking, e-commerce, retail, erp).
+
+** Problems
+
+I'd like to have something that solves problems encountered in similar
+systems before:
+
+- entanged code that grows very fragile and expensive to maintain over
+  the time;
+- inefficient use of the hardware, making it very expensive to scale
+  operation to a large number of tenants and processes.
+- lock-in with existing cloud vendors, inability to move some
+  processes on premises;
+- sensitivity to network problems (system relies on good network
+  connection);
+- no HA.
+
+** Desired features
+
+I think that solution to these problems could be achieved by
+implementing following features:
+
+- environment that is a pleasure to work with (highly subjective
+  measurement ultimately related to productivity and delivery of
+  features to real people);
+- capturing the essence of the domain models via event-driven design
+  (and reusing all the body of knowledge accumulated over this
+  design);
+- good test coverage (event-driven scenarios, cluster simulation,
+  continuous performance testing, fault injection);
+- designed to run efficiently on modern and existing hardware (native
+  Linux support);
+- simple devops story for HA deployments.
+
+
+** Trade-offs
+
+*** Linux over Windows
+
+While it is nice to build a system that runs anywhere, doing that
+would incur extra costs. So I'm aiming to focus only on a Linux/Unix,
+skipping Windows support.
+
+*** Throughput over latency
+
+The goal is to build a system that has maximum throughput, while
+operating within specific SLAs. As long as response latency stays
+within the limit, we optimise for the throughput (namely heavy
+batching disk and network IO operations).
+
+If latency goes above the threshold, we start bouncing back new
+requests, in order to maintain the SLA.
+
+*** Consistency vs Availability
+
+The system will pull consistency controls into the application logic.
+
+For operation where the cost of eventual consistency or staleness is
+noticeable for the business, we prefer to that system takes a few more
+moments to process the request, while double-checking everything.
+
+Examples of such operations are: over-picking, overselling, overdraft.
+
+For operations where we prefer the system to have high availability
+and throughput (while tolerating possible of eventual consistency),
+we'd skip tight concurrency controls and let the system reach
+consistency a few moments after finishing the operation.
+
+Examples: over-draft by a small amount within the account quote,
+overselling items which could be back-ordered quickly.
+
+As you've probably noticed, the same operation could operate under
+different consistency rules, depending on the situation.
+  
+
+** Tech Radar
+
+*** Use
+
+- *golang* - simple language with good concurrency and performance,
+  works well with code-generation (gofmt and fast compilation cycle).
+- Lisp (Clojure or some flavor of Scheme) - for capturing domain logic
+  and generating golang code.
+
+*** Explore
+
+- LMDB - embedded DB (B-Tree) designed for read-heavy operations. It
+  is very simple and robust.
+- Cap'n Proto/FlatBuffers - serialization format that avoids some
+  memory allocations.
+
+
+*** Keep an eye on
+
+- Aeron/UDP with userspace networking - tech from the finance and
+  high-frequency trading. It allows to skip some latencies and costs
+  associated with the traditional use of networking stack.
+
+
+
+
+
+* Performance targets
+
+Ideally it would be nice to have a system that supports:
+
+- 1000 write transactions per second on a (non-virtualized) modern
+  hardware with 2 CPU cores, 7GB or RAM, and a decent SSD.
+- 20k reads per second on the same hardware at the same time.
+- divide numbers by 2-3 for the virtualized hardware.
+
+Numbers will be adjusted later.
+
+In order to see how the system looks and behaves on a more realistic
+domain, I'll use a few target domains with which I'm either familiar
+personally or have friends in:
+
+1. E-commerce/Retail
+2. Gaming (in-game transactions)
+3. Banking
+
+
+** Retail Domain 
+*** Distribution of identifier lengths
+
+Approximated distribution of lengths of some identifiers.
+
+| Size | Sku1 | Sku2 | Order  |
+|------+------+------+--------|
+|    0 |    0 |    0 |      0 |
+|    1 |    0 |    0 |      0 |
+|    2 |    0 |    0 |      0 |
+|    3 |    1 |    0 |      0 |
+|    4 |    7 |    2 |      0 |
+|    5 |   16 |    7 |      0 |
+|    6 |   33 |   15 |      0 |
+|    7 |   45 |   15 |      0 |
+|    8 |   73 |   13 |      0 |
+|    9 |  105 |   35 |      0 |
+|   10 |   65 |  496 |      0 |
+|   11 |   81 |   26 |      0 |
+|   12 |  102 |  338 |      0 |
+|   13 |  134 |   68 |      1 |
+|   14 |   54 |    4 |      4 |
+|   15 |   58 |    1 |     21 |
+|   16 |   36 |    2 |     49 |
+|   17 |   34 |    1 |     52 |
+|   18 |   29 |    0 |     38 |
+|   19 |   28 |    1 |     72 |
+|   20 |   22 |    0 |    131 |
+|   21 |   15 |    0 |     78 |
+|   22 |   15 |    0 |     45 |
+|   23 |   14 |    0 |     14 |
+|   24 |   12 |    0 |     34 |
+|   25 |    9 |    0 |     25 |
+|   26 |    6 |    0 |     41 |
+|   27 |    5 |    0 |     11 |
+|   28 |    4 |    0 |     17 |
+|   29 |    4 |    0 |     24 |
+|   30 |    4 |    0 |     41 |
+|   31 |    2 |    0 |     19 |
+|   32 |    3 |    0 |     71 |
+|   33 |    1 |    0 |    150 |
+|   34 |    1 |    0 |      4 |
+|   35 |    1 |    0 |      7 |
+|   36 |    1 |    0 |      4 |
+|   37 |    1 |    0 |     24 |
+|   38 |    1 |    0 |     16 |
+|   39 |    1 |    0 |     18 |
+|   40 |    1 |    0 |      4 |
+|   41 |    0 |    0 |      0 |
+|   42 |    0 |    0 |      7 |
+|   43 |    0 |    0 |      1 |
+|   44 |    0 |    0 |      0 |
+|   45 |    0 |    0 |      0 |
+|   46 |    0 |    0 |      0 |
+|   47 |    0 |    0 |      1 |
+
+*** Order size
+
+Approximated distribution of different order counts between different
+purchases.
+
+| Count | Size |
+|-------+------|
+|     0 |  179 |
+|     1 |  708 |
+|     2 |   65 |
+|     3 |   26 |
+|     4 |   16 |
+|     5 |   10 |
+|     6 |    6 |
+|     7 |    4 |
+|     8 |    4 |
+|     9 |    2 |
+|    10 |    1 |
+|    11 |    1 |
+|    12 |    1 |
