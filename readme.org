@@ -3,7 +3,7 @@
 
 Anthill is a small research project in building HA event-driven
 business apps with specific technologies and trade-offs (focus on
-banking, e-commerce, retail, erp).
+transaction, e-commerce, retail).
 
 ** Problems
 
@@ -101,10 +101,6 @@ different consistency rules, depending on the situation.
   high-frequency trading. It allows to skip some latencies and costs
   associated with the traditional use of networking stack.
 
-
-
-
-
 * Performance targets
 
 Ideally it would be nice to have a system that supports:
@@ -116,16 +112,73 @@ Ideally it would be nice to have a system that supports:
 
 Numbers will be adjusted later.
 
+* The Plan
+
+- import [[https://github.com/abdullin/omni][Golang Omni backend]] (based on [[https://abdullin.com/btw/][BeingTheWorst]] and [[https://abdullin.com/happypancake/][HPC]]);
+- rewrite it to match the new design (swapping storage to LMDB);
+- implement target domains against this library;
+- implement Lisp/Scheme DSL to capture domains and counter excessive
+  golang verbosity.
+
+* Target domains
+
 In order to see how the system looks and behaves on a more realistic
-domain, I'll use a few target domains with which I'm either familiar
-personally or have friends in:
+domain, I'll use a few target domains:
 
-1. E-commerce/Retail
-2. Gaming (in-game transactions)
-3. Banking
+1. *Automated Factory* - with robots, assembly lines and order
+   fulfillment.
+2. *Micro-cloud provider* - if you are running your own
+   AWS or GCP tailored for a specific business niche.
+
+** Automated Factory 
+
+*** Story 
+
+In 2027, advancements in ML and manufacturing will finally pave way to
+fully automated warehouses. Pioneered by Amazon (and quickly followed
+by the rest of the industry), this factories would be built mainly in
+the deserts, where the land and power are cheap.
+
+They would contain large under underground warehouses and automated
+order fulfillment lines. Humans could order gadgets, clothes,
+equipment, customizing their orders with different upgrades, colors
+and accessories. The order would be immediately dispatched to the
+servicing factory, where a clever combination or logistics, automated
+manufacturing and transport system would produce a packaged order in a
+matter of minutes. 
+
+Rare and custom orders would need more time to
+back-order or 3D print.
+
+*** Model
+
+Automated factory takes orders and runs them through internal
+pipelines delivering a packaged product ready for shipping.
+
+An order consists of one or more order items, which are usually
+shipped together. One order item is one finished product.
+
+This item may either be located in some underground warehouse at the
+moment of purchase or it even may not exist: require assembly,
+painting, manufacturing, 3D printing etc. These processes require some
+materials, equipment and logistic capacity.
+
+In order to fulfill orders within the promised time frames Automated
+Factory:
+
+- tracks goods, raw materials and equipment available for use at any
+  given point of time;
+- uses this information to estimate item availability and order
+  fulfillment times before the checkout;
+- manages re-supply (while taking into account vendor SLAs and lead
+  times);
+- optimizes use of automated manufacturing equipment and transport
+  lines in order to reduce work in progress and increase factory
+  throughput;
+- reacts to any unexpected problems, broken equipment and lost goods
+  (rodents and cockroaches are a frequent problem).
 
 
-** Retail Domain 
 *** Distribution of identifier lengths
 
 Approximated distribution of lengths of some identifiers.
@@ -183,7 +236,7 @@ Approximated distribution of lengths of some identifiers.
 
 *** Order size
 
-Approximated distribution of different order counts between different
+Approximated distribution of different order sizes between different
 purchases.
 
 | Count | Size |
@@ -201,3 +254,30 @@ purchases.
 |    10 |    1 |
 |    11 |    1 |
 |    12 |    1 |
+
+
+
+** Micro-cloud provider
+
+*** Story
+
+On September 19th of 2023 *AMD finally got its act together* and
+delivered a fast and affordable ML platform running on PCIe backplane
+(FPGA and ARM SoC, PCIe SSD, AMD-FX and GPU integrated). This came as
+a total surprise to everybody, but this hardware was a perfect fit for
+training deep networks (with long-term memory!) via evolutionary
+algorithms. It was called Apprentice-FX and came with open drivers and
+software, making it extremely easy to buy, install and start training.
+
+New kinds of businesses started showing up shortly after. People would
+buy a few of these, capture some aspects of their own expertise in
+their own field and sell as cheap consulting services to
+everybody. Micro-transactions and stable BitcoinV3 helped here as well. 
+
+New business model required new kind of accounting software - the one
+that could manage hundreds of thousands of open accounts and thousands
+of transactions per second.
+
+
+
+
