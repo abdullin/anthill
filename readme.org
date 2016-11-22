@@ -127,7 +127,7 @@ domain, I'll use a few target domains:
 
 1. *Automated Factory* - with robots, assembly lines and order
    fulfillment.
-2. *Micro-cloud provider* - if you are running your own
+2. *Micro-service provider* - if you are running your own
    AWS or GCP tailored for a specific business niche.
 
 ** Automated Factory 
@@ -136,19 +136,22 @@ domain, I'll use a few target domains:
 
 In 2027, advancements in ML and manufacturing will finally pave way to
 fully automated warehouses. Pioneered by Amazon (and quickly followed
-by the rest of the industry), this factories would be built mainly in
-the deserts, where the land and power are cheap.
+by the rest of the industry), these factories would be built mainly in
+the deserts, where the land and power are cheap. Except for China,
+where they would be built everywhere.
 
-They would contain large under underground warehouses and automated
-order fulfillment lines. Humans could order gadgets, clothes,
-equipment, customizing their orders with different upgrades, colors
-and accessories. The order would be immediately dispatched to the
-servicing factory, where a clever combination or logistics, automated
-manufacturing and transport system would produce a packaged order in a
-matter of minutes. 
+These factories would contain large under underground warehouses and
+automated order fulfillment lines. Humans could order gadgets,
+clothes, equipment, customizing their orders with different upgrades,
+colors and accessories. The order would be immediately dispatched to
+the servicing factory, where a clever combination or logistics,
+automated manufacturing and transport system would produce a packaged
+order in a matter of minutes.
 
-Rare and custom orders would need more time to
-back-order or 3D print.
+Rare and custom orders would need more time to back-order or 3D print.
+
+We need to build a software back-end capable of managing thousands of
+these factories.
 
 *** Model
 
@@ -257,7 +260,7 @@ purchases.
 
 
 
-** Micro-cloud provider
+** Micro-service provider
 
 *** Story
 
