@@ -37,7 +37,6 @@ implementing following features:
   Linux support);
 - simple devops story for HA deployments.
 
-
 ** Trade-offs
 
 *** Linux over Windows
@@ -77,7 +76,6 @@ overselling items which could be back-ordered quickly.
 As you've probably noticed, the same operation could operate under
 different consistency rules, depending on the situation.
   
-
 ** Tech Radar
 
 *** Use
@@ -284,3 +282,17 @@ of transactions per second.
 
 
 
+
+
+* Deterministic simulation
+
+We want to simulate a cluster of nodes on a single thread similar to
+how FoundationDB used to do (see [[https://www.youtube.com/watch?v=4fFDFbi3toc][Testing Distributed Systems w/
+Deterministic Simulation]]).
+
+
+** Pseudo-random generators
+
+[[https://en.wikipedia.org/wiki/Linear-feedback_shift_register][Linear-feedback shift register]] and [[https://en.wikipedia.org/wiki/Xorshift][Xorshift]] generators create
+pseudo-random number sequences of a good quality quickly. There is a
+good [[https://github.com/lazybeaver/xorshift][golang lib]] for that.
