@@ -447,7 +447,7 @@ Rare and custom orders would need more time to back-order or 3D print.
 
 If you played Factorio, then you probably get the idea.
 
-<img src="https://i.ytimg.com/vi/DR01YdFtWFI/maxresdefault.jpg" style="width:auto" alt="Factory">
+[[https://i.ytimg.com/vi/DR01YdFtWFI/maxresdefault.jpg]]
 
 We need to build a software back-end capable of managing thousands of
 these factories.
