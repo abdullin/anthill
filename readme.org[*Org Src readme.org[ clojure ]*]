@@ -1,0 +1,14 @@
+(pkg "user"
+     "Everything about user"
+     (spec id "User id" core/id)
+     (spec name "User name" core/name)
+     (spec email "User email" core/email))
+
+(pkg "tenant"
+     (type ref "User thumbprint in all actions" [account/id user/id utc])
+
+     (evt registered "new account has just been registered" [ref account/id account/name])
+     (evt user-added "add new user to the system" [ref user/id user/name user/email])
+     (evt user-renamed "change display name of the user" [ref user/name user/name :as old-name])
+     (evt account-renamed "change display name of the account" [ref account/name account/name :as old-name]))
+

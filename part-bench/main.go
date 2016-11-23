@@ -96,9 +96,6 @@ func dbName(e int) string {
 	return "db/" + strconv.Itoa(e)
 }
 
-type partition struct {
-}
-
 func main() {
 
 	opts := &testOptions{}

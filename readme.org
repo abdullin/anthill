@@ -367,14 +367,12 @@ Numbers will be adjusted later.
 * Target domains
 
 In order to see how the system looks and behaves on a more realistic
-domain, I'll use a few target domains:
+domain, I'll use a few target domains: 
 
-1. *Automated Factory* - with robots, assembly lines and order
-   fulfillment.
-2. *Micro-service provider* - if you are running your own
+1. *Micro-service provider* - if you are running your own
    AWS or GCP tailored for a specific business niche.
-
-
+2. *Automated Factory* - with robots, assembly lines and order
+   fulfillment.
 
 ** Micro-service provider
 
