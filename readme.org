@@ -374,15 +374,43 @@ domain, I'll use a few target domains:
 2. *Micro-service provider* - if you are running your own
    AWS or GCP tailored for a specific business niche.
 
+
+
+** Micro-service provider
+
+*** Story
+
+On September 19th of 2023 *AMD finally got its act together* and
+delivered a fast and affordable ML platform running on PCIe backplane
+(FPGA and ARM SoC, PCIe SSD, AMD-FX and GPU integrated). This came as
+a total surprise to everybody, but this hardware was a perfect fit for
+training deep networks (with long-term memory!) via evolutionary
+algorithms. It was called Apprentice-FX and came with open drivers and
+software, making it extremely easy to buy, install and start training.
+
+New kinds of businesses started showing up shortly after. People would
+buy a few of these, capture some aspects of their own expertise in
+their own field and sell as cheap consulting services to
+everybody. Micro-transactions and stable BitcoinV3 helped here as well. 
+
+New business model required new kind of accounting software - the one
+that could manage hundreds of thousands of open accounts and thousands
+of transactions per second.
+
+*** TODO Model
+
+Resource usage, accounts, profiles, subscriptions, invoices, billing
+periods, currencies, charges, deposits, balance, etc.
+
 ** Automated Factory 
 
 *** Story 
 
-In 2027, advancements in ML and manufacturing will finally pave way to
-fully automated warehouses. Pioneered by Amazon (and quickly followed
-by the rest of the industry), these factories would be built mainly in
-the deserts, where the land and power are cheap. Except for China,
-where they would be built everywhere.
+In 2027, further advancements in ML and manufacturing will finally
+pave way to fully automated warehouses. Pioneered by Amazon (and
+quickly followed by the rest of the industry), these factories would
+be built mainly in the deserts, where the land and power are
+cheap. Except for China, where they would be built everywhere.
 
 These factories would contain large under underground warehouses and
 automated order fulfillment lines. Humans could order gadgets,
@@ -424,110 +452,6 @@ Factory:
   throughput;
 - reacts to any unexpected problems, broken equipment and lost goods
   (rodents and cockroaches are a frequent problem).
-
-
-*** Distribution of identifier lengths
-
-Approximated distribution of lengths of some identifiers.
-
-| Size | Sku1 | Sku2 | Order  |
-|------+------+------+--------|
-|    0 |    0 |    0 |      0 |
-|    1 |    0 |    0 |      0 |
-|    2 |    0 |    0 |      0 |
-|    3 |    1 |    0 |      0 |
-|    4 |    7 |    2 |      0 |
-|    5 |   16 |    7 |      0 |
-|    6 |   33 |   15 |      0 |
-|    7 |   45 |   15 |      0 |
-|    8 |   73 |   13 |      0 |
-|    9 |  105 |   35 |      0 |
-|   10 |   65 |  496 |      0 |
-|   11 |   81 |   26 |      0 |
-|   12 |  102 |  338 |      0 |
-|   13 |  134 |   68 |      1 |
-|   14 |   54 |    4 |      4 |
-|   15 |   58 |    1 |     21 |
-|   16 |   36 |    2 |     49 |
-|   17 |   34 |    1 |     52 |
-|   18 |   29 |    0 |     38 |
-|   19 |   28 |    1 |     72 |
-|   20 |   22 |    0 |    131 |
-|   21 |   15 |    0 |     78 |
-|   22 |   15 |    0 |     45 |
-|   23 |   14 |    0 |     14 |
-|   24 |   12 |    0 |     34 |
-|   25 |    9 |    0 |     25 |
-|   26 |    6 |    0 |     41 |
-|   27 |    5 |    0 |     11 |
-|   28 |    4 |    0 |     17 |
-|   29 |    4 |    0 |     24 |
-|   30 |    4 |    0 |     41 |
-|   31 |    2 |    0 |     19 |
-|   32 |    3 |    0 |     71 |
-|   33 |    1 |    0 |    150 |
-|   34 |    1 |    0 |      4 |
-|   35 |    1 |    0 |      7 |
-|   36 |    1 |    0 |      4 |
-|   37 |    1 |    0 |     24 |
-|   38 |    1 |    0 |     16 |
-|   39 |    1 |    0 |     18 |
-|   40 |    1 |    0 |      4 |
-|   41 |    0 |    0 |      0 |
-|   42 |    0 |    0 |      7 |
-|   43 |    0 |    0 |      1 |
-|   44 |    0 |    0 |      0 |
-|   45 |    0 |    0 |      0 |
-|   46 |    0 |    0 |      0 |
-|   47 |    0 |    0 |      1 |
-
-*** Order size
-
-Approximated distribution of different order sizes between different
-purchases.
-
-| Count | Size |
-|-------+------|
-|     0 |  179 |
-|     1 |  708 |
-|     2 |   65 |
-|     3 |   26 |
-|     4 |   16 |
-|     5 |   10 |
-|     6 |    6 |
-|     7 |    4 |
-|     8 |    4 |
-|     9 |    2 |
-|    10 |    1 |
-|    11 |    1 |
-|    12 |    1 |
-
-
-
-** Micro-service provider
-
-*** Story
-
-On September 19th of 2023 *AMD finally got its act together* and
-delivered a fast and affordable ML platform running on PCIe backplane
-(FPGA and ARM SoC, PCIe SSD, AMD-FX and GPU integrated). This came as
-a total surprise to everybody, but this hardware was a perfect fit for
-training deep networks (with long-term memory!) via evolutionary
-algorithms. It was called Apprentice-FX and came with open drivers and
-software, making it extremely easy to buy, install and start training.
-
-New kinds of businesses started showing up shortly after. People would
-buy a few of these, capture some aspects of their own expertise in
-their own field and sell as cheap consulting services to
-everybody. Micro-transactions and stable BitcoinV3 helped here as well. 
-
-New business model required new kind of accounting software - the one
-that could manage hundreds of thousands of open accounts and thousands
-of transactions per second.
-
-
-
-
 
 
 * Deterministic simulation
