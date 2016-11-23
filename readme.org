@@ -23,7 +23,34 @@ Ideally, I'll reuse as much as possible from the existing body of
 software and knowledge, simply stitching together existing solutions
 with Lisp.
 
-** Ideal Workflow
+** Constraints
+
+Let's constrain ourselves. This will be very important for making
+decisions.
+
+- focus on small operation (1-12 servers) with little money for DevOps;
+- make the most out of the available hardware (If I need to do custom
+  Linux images and userspace networking - so be it);
+- use fictitious domains for reference implementations.
+
+** Problems
+
+I'd like to solve problems encountered in similar systems before:
+
+- entanged code that grows very fragile and expensive to maintain over
+  the time;
+- inefficient use of the hardware, making it expensive to scale
+  operation to a large number of tenants and processes;
+- noticeable DevOps and computing overhead on small scale (e.g. need
+  to have Cassandra, ZooKeeper, Kafka clusters even for a small
+  operation);
+- lock-in with existing cloud vendors, inability to move some
+  processes on premises;
+- sensitivity to network problems (system relies on good network
+  connection);
+- no HA.
+
+** Ideal Development Workflow
 
 The ideal workflow would start with event storming session or any
 other collaborative way to capture domain model.
@@ -193,34 +220,6 @@ In a sense, we are replicating the approach taken by FoundationDB with
 their [[https://gist.github.com/abdullin/d829c7e59676f5bdb54fc157e9e55b5f][Flow language]], cluster simulations and the general development
 approach.
 
-** Constraints
-
-Let's constrain ourselves. This will be very important for making
-decisions.
-
-- focus on small operation (1-12 servers) with little money for DevOps;
-- make the most out of the available hardware (If I need to do custom
-  Linux images and userspace networking - so be it);
-- use fictitious domains for reference implementations.
-
-** Problems
-
-I'd like to solve problems encountered in similar systems before:
-
-- entanged code that grows very fragile and expensive to maintain over
-  the time;
-- inefficient use of the hardware, making it expensive to scale
-  operation to a large number of tenants and processes;
-- noticeable DevOps and computing overhead on small scale (e.g. need
-  to have Cassandra, ZooKeeper, Kafka clusters even for a small
-  operation);
-- lock-in with existing cloud vendors, inability to move some
-  processes on premises;
-- sensitivity to network problems (system relies on good network
-  connection);
-- no HA.
-
-
 
 ** Licensing
 
@@ -230,6 +229,32 @@ source (they will probably be based on [[https://github.com/abdullin/omni][Omni]
 Code generation (part that allows to reduce boilerplate) will be
 initially kept a trade secret.
 
+** High Availability
+
+The idea is:
+
+- we partition the entire load for scaling;
+- each partition runs in a [[http://stackoverflow.com/questions/23535740/lmax-replicator-design-how-to-support-high-availability][LMAX-style replication]], where the master
+  sits behind the load balancer (or load balancing is baked into the
+  client), and processes all requests; followers simply consume events
+  and update their own read models;
+- when master fails, new requests are redirected to the next replica;
+- if a client wants speed, it can wait for ACK only from the master;
+  if it wants consistency, it would need to launch a transaction
+  involving replica commits;
+- if there are any problems - see [[https://syslab.cs.washington.edu/papers/tapir-tr14.pdf][TAPIR]];
+- we can either delegate cluster coordination to Consul or embed RAFT
+  library for that;
+- we also do a lot of simulation tests (it might be worth just to get
+  a few dedicated servers and keep them humming) with fault
+  injections.
+
+Note: different replicas of the same data (e.g. user account on the
+owner server and it's representation in some branch) are treated as
+separate models and not as different replicas within the same
+partition.
+
+Note: I will most likely fail around step 2 of this list.
 
 ** Desired features
 
