@@ -109,39 +109,39 @@ different consistency rules, depending on the situation.
   
 ** Tech Radar for backend implementation
 
+This is an /opinionated/ tech map.
 
-*** Overview
-
-| Tech         | I like                                         | Drawbacks for me                            |
-|--------------+------------------------------------------------+---------------------------------------------|
-| *Store*      |                                                |                                             |
-| Cassandra    | Adopted and supported, scales read models well | DevOps overhead, inefficient use of hw      |
-| ScyllaDB     | Competent team, more efficient than Cassandra  | Young, misses some Cassandra features       |
-| Kafka        | Adopted and supported, high scale              | DevOps hungry, esp in multi-DC scenario     |
-| FoundationDB | Everything                                     | RIP, no support                             |
-| SQLite       | Embedded, widely used, fast end efficient      | SQL overhead, roll your own HA              |
-| RocksDB      | Embedded, fast                                 | key-value, unpredictable performance        |
-| LMDB         | Embedded, fast, predictable and simple         | Niche, needs custom data layer and HA       |
-|--------------+------------------------------------------------+---------------------------------------------|
-| *Platform*   |                                                |                                             |
-| .NET/C#      | Great platform and momentum                    | Linux support is young, no libs that I need |
-| Java/Scala   | Polished Linux, Adopted, good libs             | Slow compilation, fat VM                    |
-| Clojure      | Lisp with all Java benefits                    | Niche adoption and all Java drawbacks       |
-| Erlang       | Low-latency, REPL, functional, great VM        | Latency over throughput                     |
-| golang       | good libs and perf, designed for codegen       | Depends on google                           |
-| Rust         | low-level performance, burrow, good libs       | Slower compilation, depends on Mozilla      |
-|--------------+------------------------------------------------+---------------------------------------------|
-| *Serialize*  |                                                |                                             |
-| Protobuf     | Adopted, schema-based                          | Memory allocations                          |
-| msgpack      | Adopted                                        | Overhead, memory allocations                |
-| Cap'n Proto  | Fewer mallocs, fast, opinionated               | Depends on a small company, custom IDL      |
-| FlatBuffers  | Fewer mallocs, fast, by Google                 | Depends on Google's good will, custom IDL   |
-| Custom IDL   | Fewer mallocs, fast, can even use bitstreams   | Don't know how much effort this would take  |
-|--------------+------------------------------------------------+---------------------------------------------|
-| *Network*    |                                                |                                             |
-| HTTP/2 JSON  | Fast, adopted, accessible                      | JSON and HTTP overhead                      |
-| UDP/Aeron    | Avoids TCP/IP overhead, low-latency, netmap    | Limited libs, needs more effort             |
-
+|   | Tech         | I like                                         | Drawbacks for me                            |
+|---+--------------+------------------------------------------------+---------------------------------------------|
+|   | *Store*      |                                                |                                             |
+|   | [[http://cassandra.apache.org][Cassandra]]    | Adopted and supported, scales read models well | DevOps overhead, inefficient use of hw      |
+|   | [[https://symas.com/products/lightning-memory-mapped-database/][ScyllaDB]]     | Competent team, more efficient than Cassandra  | Young, misses some Cassandra features       |
+|   | [[https://web.archive.org/web/20140804175611/https://foundationdb.com/][FoundationDB]] | Everything, they taught layers well            | RIP, no support                             |
+|   | [[https://symas.com/products/lightning-memory-mapped-database/][SQLite]]       | Embedded, widely used, fast end efficient      | SQL overhead, roll your own HA              |
+|   | [[http://rocksdb.org][RocksDB]]      | Embedded, fast                                 | key-value, [[https://twitter.com/kellabyte/status/798517208359911424][worse performance than LMDB]]      |
+| X | [[https://symas.com/products/lightning-memory-mapped-database/][LMDB]]         | Embedded, fast, predictable and simple         | Niche, needs custom data layer and HA       |
+|---+--------------+------------------------------------------------+---------------------------------------------|
+|   | *Platform*   |                                                |                                             |
+|   | .NET/C#      | Great platform and momentum                    | Linux support is young, no libs that I need |
+|   | Java/Scala   | Polished Linux, Adopted, good libs             | Slow compilation, fat VM                    |
+|   | [[http://clojure.org][Clojure]]      | Lisp with all Java benefits                    | Niche adoption and all Java drawbacks       |
+|   | [[https://www.erlang.org][Erlang]]       | Low-latency, REPL, functional, great VM        | Latency over throughput                     |
+| X | [[http://golang.org][golang]]       | good libs and perf, designed for codegen       | Depends on google                           |
+| . | [[https://www.rust-lang.org/en-US/][Rust]]         | low-level, burrow, good libs                   | Slower compilation, depends on Mozilla      |
+|   | C++          | low-level, a lot of libraries                  | Slow compilation, easy to shoot in the foot |
+| . | C            | low-level, simple                              | Essentially a higher assembly language      |
+|---+--------------+------------------------------------------------+---------------------------------------------|
+|   | *Serialize*  |                                                |                                             |
+|   | [[https://github.com/google/protobuf][Protobuf]]     | Adopted, schema-based                          | Memory allocations                          |
+|   | [[http://msgpack.org][msgpack]]      | Adopted, shema-less                            | Verbose, overhead, memory allocations       |
+| X | [[https://capnproto.org][Cap'n Proto]]  | Fewer mallocs, fast, opinionated               | Depends on a small company, custom IDL      |
+| . | [[https://google.github.io/flatbuffers/][FlatBuffers]]  | Fewer mallocs, fast, by Google                 | Depends on Google's good will, custom IDL   |
+| . | Custom       | Fewer mallocs, fast, can use bitstreams ([[http://ithare.com/marshalling-and-encodings/][ref]])  | Don't know how much effort this would take  |
+|---+--------------+------------------------------------------------+---------------------------------------------|
+|   | *Network*    |                                                |                                             |
+|   | HTTP/2 JSON  | Fast, adopted, accessible                      | JSON and HTTP overhead                      |
+|   | [[https://github.com/real-logic/Aeron][UDP/Aeron]]    | Avoids TCP/IP overhead, low-latency            | Limited libs, needs more effort             |
+|   | [[https://kafka.apache.org][Apache Kafka]] | Adopted and supported, high scale              | DevOps hungry, [[https://www.confluent.io/blog/event-sourcing-cqrs-stream-processing-apache-kafka-whats-connection/][trying to become a DB]]        |
 
 
 *** Use
