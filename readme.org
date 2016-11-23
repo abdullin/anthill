@@ -10,17 +10,17 @@ Ideally I'd like to have a set of tooling to:
 - capture a business model in a high-level domain language (more
   expressive than C#/Scala): scenarios, APIs, event contracts,
   projections and request handlers;
-- use meta-model to generate a performant backend implementation in a
+- use meta-model to generate a performant back-end implementation in a
   low level systems language with access to fast and stable consensus,
   networking and storage libraries;
-- design code generation (and infrastructure libraries) to allow
-  fast deterministic simulation of a cluster on one thread;
+- support rigorous testing and fast deterministic simulation of a
+  cluster from the start;
 - invest CPU hours instead of my time to find bugs in the domain
   model, HA logic, code generation and infrastructure libraries.
 
 
 Ideally, I'll reuse as much as possible from the existing body of
-software and knowledge, simply stiching together existing solutions
+software and knowledge, simply stitching together existing solutions
 with Lisp.
 
 
@@ -31,7 +31,7 @@ decisions.
 
 - focus on small operation (1-12 servers) with little money for DevOps;
 - make the most out of the available hardware (If I need to do custom
-  linux images and userspace networking - so be it);
+  Linux images and userspace networking - so be it);
 - use fictitious domains for reference implementations.
 
 ** Problems
