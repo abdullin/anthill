@@ -23,6 +23,175 @@ Ideally, I'll reuse as much as possible from the existing body of
 software and knowledge, simply stitching together existing solutions
 with Lisp.
 
+** Ideal Workflow
+
+The ideal workflow would start with event storming session or any
+other collaborative way to capture domain model.
+
+Data types and events would could be quickly captured in DSL
+(currently using Lisp syntax).
+
+#+BEGIN_SRC clojure
+  (pkg "user"
+       "Everything about user"
+       (spec id "User id" core/id)
+       (spec name "User name" core/name)
+       (spec email "User email" core/email))
+
+  (pkg "tenant"
+       (type ref "User thumbprint in all actions" [account/id user/id utc])
+
+       (evt registered "new account has just been registered" [ref account/id account/name])
+       (evt user-added "add new user to the system" [ref user/id user/name user/email])
+       (evt user-renamed "change display name of the user" [ref user/name user/name :as old-name])
+       (evt account-renamed "change display name of the account" [ref account/name account/name :as old-name]))
+#+END_SRC
+
+This information is already enough to generate declarations for types,
+events, API requests and responses, event handlers:
+
+#+BEGIN_SRC go
+  // Mass - Weight with a dimension
+  type Mass struct {
+	  WeightScale weight.Scale `json:"weightScale"`
+	  WeightValue float64      `json:"weightValue"`
+  }
+
+  func (r *Mass) validate() (err error) {
+	  return nil
+  }
+  func NewMass(weightScale weight.Scale, weightValue float64) *Mass {
+	  return &Mass{weightScale, weightValue}
+  }
+#+END_SRC
+
+This is similar to how [[https://github.com/agileharbor/dsl][DSL Tool]] (v2) works, so there is nothing new at
+this point.
+
+In a sense we are using DSL tool to generate large chunks of the
+codebase similar to [[https://github.com/abdullin/omni][Omni]] sample.
+
+However, with a few more DSL constructs we could generate
+domain-specific methods for reading and storing data in the local
+key-value database (e.g. LMDB) database, leveraging binary prefixes,
+subspaces and tuples to structure and manipulate data. Fortunately,
+FoundationDB left a lot of material on the subject.
+
+For example for a simple index we could generate something like that:
+
+#+BEGIN_SRC go
+  func DeleteUserEmailIndex(tr db.Transaction, email user.Email) {
+	  tr.Clear(db.Sub(EMAIL_INDEX_SPACE, email))
+  }
+  func SetUserEmailIndex(tr db.Transaction, email user.Email, userId user.Id) {
+	  tr.Set(db.Sub(EMAIL_INDEX_SPACE, email), db.EncodeUInt64(userId)) 
+  }
+#+END_SRC
+
+More complex operations (e.g. updating a large binary view) would
+require tapping into the serialization format capabilities. By using
+FlatBuffers or Cap'n Proto we could even perform some operations
+without memory allocations.
+
+Use-cases like the one below could also be expressed in the DSL (along
+with the model) and rendered into the target language:
+
+#+BEGIN_SRC go
+  func when_post_inbox_task_then_event_is_published() *env.UseCase {
+
+	  newTaskId := lang.NewTaskId()
+
+	  return &env.UseCase{
+		  Name: "When POST /task for inbox, then 2 events are published",
+		  When: spec.PostJSON("/task", seq.Map{
+			  "name":  "NewTask",
+			  "inbox": true,
+		  }),
+		  ThenResponse: spec.ReturnJSON(seq.Map{
+			  "name":   "NewTask",
+			  "inbox":  "true",
+			  "taskId": newTaskId,
+		  }),
+		  ThenEvents: spec.Events(
+			  lang.NewTaskAdded(IgnoreEventId, newTaskId, "NewTask"),
+			  lang.NewTaskMovedToInbox(IgnoreEventId, newTaskId),
+		  ),
+		  Where: spec.Where{
+			  newTaskId:     "sameTaskId",
+			  IgnoreEventId: "ignore",
+		  },
+	  }
+  }
+#+END_SRC
+
+If we rewrite [[https://github.com/abdullin/omni/blob/master/core/bus/memory.go][bus]] from the Omni project to run all request and event
+handlers on a single thread, while simulating multiple nodes, this is
+enough to get started with some trivial simulation runs and failure
+injections.
+
+At this point almost all code would either be generated from the DSL
+or imported from the infrastructure libraries, including schema checks
+and request wrappers (boring to write in go):
+
+#+BEGIN_SRC go
+  // RegisterNewRequest - register a new account
+  type RegisterNewRequest struct {
+	  AccountName string `json:"accountName"`
+	  UserName    string `json:"userName"`
+	  UserEmail   string `json:"userEmail"`
+  }
+
+  func (r *RegisterNewRequest) validate() (err error) {
+	  return nil
+  }
+  func registerNewRequest(h Handler, req *api.Request) api.Response {
+	  var request RegisterNewRequest
+
+	  if err := req.ParseBody(&request); err != nil {
+		  return api.BadRequestResponse(err.Error())
+	  }
+	  if err := request.validate(); err != nil {
+		  return api.BadRequestResponse(err.Error())
+	  }
+	  return h.RegisterNew(&request)
+  }
+
+#+END_SRC
+
+However, actual implementations would need to be provided, according
+to the generated interfaces:
+
+#+BEGIN_SRC go
+  type Handler interface {
+	  Add(req *AddRequest) api.Response
+	  Delete(req *DeleteRequest) api.Response
+	  Rename(req *RenameRequest) api.Response
+	  Detail(req *DetailRequest) api.Response
+  }
+#+END_SRC
+
+Theoretically, we could even capture bulk of the business logic in
+clojure (since it mostly deals with the data transformations in our
+target domains), leaving only the edge cases for the target language.
+
+At this point, the most challenging part would be in building strongly
+consistent operations on top of unreliable event replication between
+the replica nodes. Fortunately:
+
+1. There is an existing inspiration in papers on commit protocols,
+   state machines (e.g.: [[https://syslab.cs.washington.edu/papers/tapir-tr14.pdf][Building Consistent Transactions with
+   Inconsistent Replication]]).
+2. There is a [[https://github.com/hashicorp/raft][golang implementation of the Raft consensus protocol]]
+   (kudos to Hashicorp).
+3. Codegen could help with generating state machines, while keeping
+   them close to the business logic. After all, businesses have a long
+   history of dealing with race conditions.
+4. Rigorous simulation testing could help in figuring out the bugs (or
+   giving up early).
+
+In a sense, we are replicating the approach taken by FoundationDB with
+their [[https://gist.github.com/abdullin/d829c7e59676f5bdb54fc157e9e55b5f][Flow language]], cluster simulations and the general development
+approach.
 
 ** Constraints
 
