@@ -32,8 +32,7 @@ decisions.
 - focus on small operation (1-12 servers) with little money for DevOps;
 - make the most out of the available hardware (If I need to do custom
   linux images and userspace networking - so be it);
-- keep infrastructure libraries and generated implementations open
-  source (code generation - trade secret);
+- use fictitious domains for reference implementations.
 
 ** Problems
 
@@ -51,6 +50,17 @@ I'd like to solve problems encountered in similar systems before:
 - sensitivity to network problems (system relies on good network
   connection);
 - no HA.
+
+
+
+** Licensing
+
+Keep infrastructure libraries and generated implementations open
+source (they will probably be based on [[https://github.com/abdullin/omni][Omni]] project anyway).
+
+Code generation (part that allows to reduce boilerplate) will be
+initially kept a trade secret.
+
 
 ** Desired features
 
