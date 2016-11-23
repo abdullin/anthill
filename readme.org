@@ -5,15 +5,47 @@ Anthill is a small research project in building HA event-driven
 business apps with specific technologies and trade-offs (focus on
 transaction, e-commerce, retail).
 
+Ideally I'd like to have a set of tooling to:
+
+- capture a business model in a high-level domain language (more
+  expressive than C#/Scala): scenarios, APIs, event contracts,
+  projections and request handlers;
+- use meta-model to generate a performant backend implementation in a
+  low level systems language with access to fast and stable consensus,
+  networking and storage libraries;
+- design code generation (and infrastructure libraries) to allow
+  fast deterministic simulation of a cluster on one thread;
+- invest CPU hours instead of my time to find bugs in the domain
+  model, HA logic, code generation and infrastructure libraries.
+
+
+Ideally, I'll reuse as much as possible from the existing body of
+software and knowledge, simply stiching together existing solutions
+with Lisp.
+
+
+** Constraints
+
+Let's constrain ourselves. This will be very important for making
+decisions.
+
+- focus on small operation (1-12 servers) with little money for DevOps;
+- make the most out of the available hardware (If I need to do custom
+  linux images and userspace networking - so be it);
+- keep infrastructure libraries and generated implementations open
+  source (code generation - trade secret);
+
 ** Problems
 
-I'd like to have something that solves problems encountered in similar
-systems before:
+I'd like to solve problems encountered in similar systems before:
 
 - entanged code that grows very fragile and expensive to maintain over
   the time;
-- inefficient use of the hardware, making it very expensive to scale
-  operation to a large number of tenants and processes.
+- inefficient use of the hardware, making it expensive to scale
+  operation to a large number of tenants and processes;
+- noticeable DevOps and computing overhead on small scale (e.g. need
+  to have Cassandra, ZooKeeper, Kafka clusters even for a small
+  operation);
 - lock-in with existing cloud vendors, inability to move some
   processes on premises;
 - sensitivity to network problems (system relies on good network
@@ -38,7 +70,6 @@ implementing following features:
 - simple devops story for HA deployments.
 
 ** Trade-offs
-
 *** Linux over Windows
 
 While it is nice to build a system that runs anywhere, doing that
@@ -76,7 +107,42 @@ overselling items which could be back-ordered quickly.
 As you've probably noticed, the same operation could operate under
 different consistency rules, depending on the situation.
   
-** Tech Radar
+** Tech Radar for backend implementation
+
+
+*** Overview
+
+| Tech         | I like                                         | Drawbacks for me                            |
+|--------------+------------------------------------------------+---------------------------------------------|
+| *Store*      |                                                |                                             |
+| Cassandra    | Adopted and supported, scales read models well | DevOps overhead, inefficient use of hw      |
+| ScyllaDB     | Competent team, more efficient than Cassandra  | Young, misses some Cassandra features       |
+| Kafka        | Adopted and supported, high scale              | DevOps hungry, esp in multi-DC scenario     |
+| FoundationDB | Everything                                     | RIP, no support                             |
+| SQLite       | Embedded, widely used, fast end efficient      | SQL overhead, roll your own HA              |
+| RocksDB      | Embedded, fast                                 | key-value, unpredictable performance        |
+| LMDB         | Embedded, fast, predictable and simple         | Niche, needs custom data layer and HA       |
+|--------------+------------------------------------------------+---------------------------------------------|
+| *Platform*   |                                                |                                             |
+| .NET/C#      | Great platform and momentum                    | Linux support is young, no libs that I need |
+| Java/Scala   | Polished Linux, Adopted, good libs             | Slow compilation, fat VM                    |
+| Clojure      | Lisp with all Java benefits                    | Niche adoption and all Java drawbacks       |
+| Erlang       | Low-latency, REPL, functional, great VM        | Latency over throughput                     |
+| golang       | good libs and perf, designed for codegen       | Depends on google                           |
+| Rust         | low-level performance, burrow, good libs       | Slower compilation, depends on Mozilla      |
+|--------------+------------------------------------------------+---------------------------------------------|
+| *Serialize*  |                                                |                                             |
+| Protobuf     | Adopted, schema-based                          | Memory allocations                          |
+| msgpack      | Adopted                                        | Overhead, memory allocations                |
+| Cap'n Proto  | Fewer mallocs, fast, opinionated               | Depends on a small company, custom IDL      |
+| FlatBuffers  | Fewer mallocs, fast, by Google                 | Depends on Google's good will, custom IDL   |
+| Custom IDL   | Fewer mallocs, fast, can even use bitstreams   | Don't know how much effort this would take  |
+|--------------+------------------------------------------------+---------------------------------------------|
+| *Network*    |                                                |                                             |
+| HTTP/2 JSON  | Fast, adopted, accessible                      | JSON and HTTP overhead                      |
+| UDP/Aeron    | Avoids TCP/IP overhead, low-latency, netmap    | Limited libs, needs more effort             |
+
+
 
 *** Use
 
@@ -92,12 +158,13 @@ different consistency rules, depending on the situation.
 - Cap'n Proto/FlatBuffers - serialization format that avoids some
   memory allocations.
 
-
 *** Keep an eye on
 
 - Aeron/UDP with userspace networking - tech from the finance and
   high-frequency trading. It allows to skip some latencies and costs
   associated with the traditional use of networking stack.
+
+
 
 * Performance targets
 
